@@ -1,0 +1,63 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>ADVENTURE_FILTERS</key>
+	<string>Bộ Lọc Nâng Cao</string>
+	<key>ALL_APPS</key>
+	<string>Tất Cả Ứng Dụng</string>
+	<key>AUTO_SCAN_FILE_MAP</key>
+	<string>Tự Động Quét Bản Đồ Tệp Tin</string>
+	<key>BYBASS_MODES</key>
+	<string>Các Chế Độ</string>
+	<key>CANCEL</key>
+	<string>Huỷ</string>
+	<key>CONFIRM_SCAN_FILE_MAP</key>
+	<string>Quét bản đồ tập tin sẽ mất một khoảng thời gian, thời gian đến khi hoàn thành tuỳ thuộc vào thiết bị và số tweak bạn đã cài trên thiết bị.</string>
+	<key>DISABLE_FOR_JB_SYSTEM_APP</key>
+	<string>Tắt HideJB Với Ứ.D Hệ Thống Và JB</string>
+	<key>ENABLE_3DTOUCH_NOSUB</key>
+	<string>Kích hoạt 3DTouch Nosub</string>
+	<key>ENABLE_HIDEJB</key>
+	<string>Kích hoạt HideJB</string>
+	<key>FILE_MAP</key>
+	<string>Bản Đồ Tập Tin</string>
+	<key>FIND_MORE_TWEAK</key>
+	<string>Tìm kiếm nhiều tweak hơn ở repo của chúng tôi</string>
+	<key>FOLLOW_US_ON_FB</key>
+	<string>Theo dõi chúng tôi trên Facebook</string>
+	<key>LOCK_APP_IN_SANDBOX</key>
+	<string>Khoá Ứng Dụng Trong Hộp Cát</string>
+	<key>NOITICE</key>
+	<string>- Ở chế độ tất cả ứng dụng thì tất cả ứng dụng sẽ được bảo vệ bởi HideJB ngoại trừ các ứng dụng bạn chọn.
+- Ở chế độ còn lại thì chỉ ứng dụng bạn chọn mới được HideJB bảo vệ.
+- 3DTouch Nosub giúp bạn truy cập ứng dụng mà ứng dụng nó không bị ảnh hưởng bởi các tweak bạn đã cài. Nhấn 3DTouch vào icon ở màn hình chính để truy cập chế độ này.
+- Khoá Ứng Dụng Trong Hộp Cát giúp bạn khôi phục cơ chế hộp cát của iOS và làm các ứng dụng chỉ có thể hoạt động trong môi trường của riêng nó bằng cách hạn chế quyền đọc/ghi của ứng dụng.
+</string>
+	<key>NOITICE_BYBASS_MODES</key>
+	<string>- Chế độ truyền thống dựa trên các cách thức cũ, tắt mục này nếu bạn muốn HideJB hoạt động hiệu quả hơn.
+- Bộ lọc nâng cao có thể kích hoạt nhầm trình phát hiện jailbreak của một số ứng dụng.
+- Bộ lọc thông minh là chế độ mạnh nhất, nó có thể tấn công hầu như tất cả cấp độ bảo vệ của ứng dụng, nhưng trong một số trường hợp sẽ gây lỗi ứng dụng.</string>
+	<key>NOITICE_SCAN_FILE_MAP</key>
+	<string>- HideJB sẽ quét bản đồ tệp tin và biết được những thay đổi của hệ thống, mỗi khi bạn cài thêm hay xoá tweak thì bản đồ tệp tin sẽ thay đổi và bạn phải thực hiện lại thao tác này.
+- Chế độ tự động sẽ quét lại bản đồ tệp mỗi khi bạn Respring.</string>
+	<key>NOTICE_RESET</key>
+	<string>Thao tác này sẽ đặt lại cài đặt mặc định của HideJB, bạn có muốn tiếp tục?</string>
+	<key>OLD_BYBASS</key>
+	<string>Chế Độ Truyền Thống</string>
+	<key>ONLY_SELECTED</key>
+	<string>Chỉ Ứ.D Được Chọn</string>
+	<key>RESET</key>
+	<string>Đặt lại HideJB</string>
+	<key>SCAN_FILE_MAP</key>
+	<string>Quét Bản Đồ Tệp Tin</string>
+	<key>SELECT_APPS</key>
+	<string>Chọn Ứng Dụng</string>
+	<key>SIMPLE_FILTERS</key>
+	<string>Bộ Lọc Đơn Giản</string>
+	<key>SMART_FILTERS</key>
+	<string>Bộ Lọc Thông Minh</string>
+	<key>SUPPORT_US</key>
+	<string>Cách để bạn giúp chúng tôi phát triển</string>
+</dict>
+</plist>
