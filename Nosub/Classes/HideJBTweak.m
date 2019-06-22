@@ -34,7 +34,7 @@ static void InitializePreferences(NSDictionary **preferences) {
         NSNumber *enabledNumber = [[NSNumber alloc] initWithBool:YES];
         *preferences =
             [[NSDictionary alloc] initWithObjectsAndKeys:enabledNumber,
-                                                         @"nsEnabled",
+                                                         @"enabled_nosub",
                                                          nil];
 
         [enabledNumber release];
@@ -93,7 +93,7 @@ static CFStringRef preferencesChangedNotificationString =
 }
 
 - (BOOL)isEnabled {
-    return [[_preferences objectForKey:@"nsEnabled"] boolValue];
+    return [[_preferences objectForKey:@"enabled_nosub"] boolValue];
 }
 
 #ifdef DEBUG

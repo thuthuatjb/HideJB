@@ -2737,10 +2737,10 @@ void updateDyldArray(void) {
     HBPreferences *prefs = [HBPreferences preferencesForIdentifier:PREFS_TWEAK_ID];
 
     [prefs registerDefaults:@{
-        @"enabled" : @YES,
+        @"enabled_hidejb" : @YES,
         @"mode" : @"blacklist",
-        @"bypass_checks" : @YES,
-        @"exclude_system_apps" : @YES,
+        @"enabled_bypass_checks" : @YES,
+        @"enabled_exclude_safe_apps" : @YES,
         @"auto_file_map_generation_enabled" : @YES
     }];
 
@@ -2784,10 +2784,10 @@ void updateDyldArray(void) {
             HBPreferences *prefs = [HBPreferences preferencesForIdentifier:PREFS_TWEAK_ID];
 
             [prefs registerDefaults:@{
-                @"enabled" : @YES,
+                @"enabled_hidejb" : @YES,
                 @"mode" : @"blacklist",
-                @"bypass_checks" : @YES,
-                @"exclude_system_apps" : @YES,
+                @"enabled_bypass_checks" : @YES,
+                @"enabled_exclude_safe_apps" : @YES,
                 @"auto_file_map_generation_enabled" : @YES
             }];
             
@@ -2798,14 +2798,15 @@ void updateDyldArray(void) {
             }
 
             // Check if safe bundleIdentifier
-            if([prefs boolForKey:@"exclude_system_apps"]) {
+            if([prefs boolForKey:@"enabled_exclude_safe_apps"]) {
                 // Disable HideJB for Apple and jailbreak apps
                 NSArray *excluded_bundleids = @[
                     @"com.apple", // Apple apps
                     @"is.workflow.my.app", // Shortcuts
                     @"science.xnu.undecimus", // unc0ver
                     @"com.electrateam.chimera", // Chimera
-                    @"org.coolstar.electra" // Electra
+                    @"org.coolstar.electra", // Electra
+                    @"us.diatr.undecimus" // unc0ver dark				
                 ];
 
                 for(NSString *bundle_id in excluded_bundleids) {
@@ -2917,26 +2918,26 @@ void updateDyldArray(void) {
             NSLog(@"hooked bypass methods");
 
             // Initialize other hooks
-            if([prefs boolForKey:@"bypass_checks"]) {
+            if([prefs boolForKey:@"enabled_bypass_checks"]) {
                 %init(hook_libraries);
 
                 NSLog(@"hooked detection libraries");
             }
 
-            if([prefs boolForKey:@"dyld_hooks_enabled"] || [prefs_lockdown boolForKey:bundleIdentifier]) {
+            if([prefs boolForKey:@"enabled_dyld_hooks"] || [prefs_lockdown boolForKey:bundleIdentifier]) {
                 %init(hook_dyld_image);
 
                 NSLog(@"filtering dynamic libraries");
             }
 
-            if([prefs boolForKey:@"sandbox_hooks_enabled"] || [prefs_lockdown boolForKey:bundleIdentifier]) {
+            if([prefs boolForKey:@"enabled_lock_sandbox"] || [prefs_lockdown boolForKey:bundleIdentifier]) {
                 %init(hook_sandbox);
 
                 NSLog(@"hooked sandbox methods");
             }
 
             // Generate filtered dyld array
-            if([prefs boolForKey:@"dyld_filter_enabled"] || [prefs_lockdown boolForKey:bundleIdentifier]) {
+            if([prefs boolForKey:@"enabled_dyld_filter"] || [prefs_lockdown boolForKey:bundleIdentifier]) {
                 updateDyldArray();
 
                 %init(hook_dyld_advanced);

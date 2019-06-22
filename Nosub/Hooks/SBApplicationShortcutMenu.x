@@ -28,6 +28,7 @@
         shortcutItem = [[%c(SBSApplicationShortcutItem) alloc] init];
 
         [shortcutItem setLocalizedTitle:@"HideJB NoSub"];
+        [shortcutItem setLocalizedSubtitle:@"Disable tweaks - Tắt tweaks"];			
         [shortcutItem setBundleIdentifierToLaunch:bundleIdentifier];
         [shortcutItem setType:kHideJBShortcutItemIdentifier];
 

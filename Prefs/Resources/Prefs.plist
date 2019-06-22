@@ -40,13 +40,11 @@
 			<key>defaults</key>
 			<string>com.thuthuatjb.hidejb</string>
 			<key>key</key>
-			<string>enabled</string>
+			<string>enabled_hidejb</string>
 			<key>label</key>
 			<string>ENABLE_HIDEJB</string>
 		</dict>
 		<dict>
-			<key>PostNotification</key>
-			<string>ThuthuatJBHideJBPreferencesChangedNotification</string>
 			<key>cell</key>
 			<string>PSSwitchCell</string>
 			<key>default</key>
@@ -54,9 +52,9 @@
 			<key>defaults</key>
 			<string>com.thuthuatjb.hidejb</string>
 			<key>key</key>
-			<string>nsEnabled</string>
+			<string>enabled_nosub</string>
 			<key>label</key>
-			<string>ENABLE_3DTOUCH_NOSUB</string>
+			<string>ENABLE_FOCRETOUCH_NOSUB</string>
 		</dict>
 		<dict>
 			<key>cell</key>
@@ -66,7 +64,7 @@
 			<key>defaults</key>
 			<string>com.thuthuatjb.hidejb</string>
 			<key>key</key>
-			<string>exclude_system_apps</string>
+			<string>enabled_exclude_safe_apps</string>
 			<key>label</key>
 			<string>DISABLE_FOR_JB_SYSTEM_APP</string>
 		</dict>
@@ -78,7 +76,7 @@
 			<key>defaults</key>
 			<string>com.thuthuatjb.hidejb</string>
 			<key>key</key>
-			<string>sandbox_hooks_enabled</string>
+			<string>enabled_lock_sandbox</string>
 			<key>label</key>
 			<string>LOCK_APP_IN_SANDBOX</string>
 		</dict>
@@ -168,7 +166,7 @@
 			<key>defaults</key>
 			<string>com.thuthuatjb.hidejb</string>
 			<key>key</key>
-			<string>dyld_hooks_enabled</string>
+			<string>enabled_dyld_hooks</string>
 			<key>label</key>
 			<string>SIMPLE_FILTERS</string>
 		</dict>
@@ -180,42 +178,9 @@
 			<key>defaults</key>
 			<string>com.thuthuatjb.hidejb</string>
 			<key>key</key>
-			<string>dyld_filter_enabled</string>
+			<string>enabled_dyld_filter</string>
 			<key>label</key>
 			<string>ADVENTURE_FILTERS</string>
-		</dict>
-		<dict>
-			<key>ALAllowsSelection</key>
-			<string>0</string>
-			<key>ALSectionDescriptors</key>
-			<array>
-				<dict>
-					<key>cell-class-name</key>
-					<string>ALSwitchCell</string>
-					<key>icon-size</key>
-					<string>29</string>
-					<key>predicate</key>
-					<string>isSystemApplication = FALSE</string>
-					<key>suppress-hidden-apps</key>
-					<string>1</string>
-				</dict>
-			</array>
-			<key>ALSettingsDefaultValue</key>
-			<string>0</string>
-			<key>ALSettingsKeyPrefix</key>
-			<string></string>
-			<key>ALSettingsPath</key>
-			<string>/var/mobile/Library/Preferences/com.thuthuatjb.hidejb.apps.dlfcn.plist</string>
-			<key>ALSingleEnabledMode</key>
-			<false/>
-			<key>bundle</key>
-			<string>AppList</string>
-			<key>cell</key>
-			<string>PSLinkCell</string>
-			<key>isController</key>
-			<string>1</string>
-			<key>label</key>
-			<string>SMART_FILTERS</string>
 		</dict>
 		<dict>
 			<key>cell</key>
@@ -227,7 +192,7 @@
 		</dict>
 		<dict>
 			<key>action</key>
-			<string>generate_map:</string>
+			<string>scan_map:</string>
 			<key>cell</key>
 			<string>PSButtonCell</string>
 			<key>confirmation</key>

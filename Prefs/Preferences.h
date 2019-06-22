@@ -9,7 +9,7 @@
 #import "../Includes/HideJB.h"
 
 @interface HideJBPrefsListController : HBRootListController
-- (void)generate_map:(id)sender;
+- (void)scan_map:(id)sender;
 - (void)respring:(id)sender;
 - (void)reset:(id)sender;
 @end

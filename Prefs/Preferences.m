@@ -32,8 +32,8 @@
     self.navigationController.navigationController.navigationBar.translucent = YES;
 }
 
-- (void)generate_map:(id)sender {
-    UIAlertController *alert = [UIAlertController alertControllerWithTitle:@"HideJB by TTJB Team" message:@"Please wait..." preferredStyle:UIAlertControllerStyleAlert];
+- (void)scan_map:(id)sender {
+    UIAlertController *alert = [UIAlertController alertControllerWithTitle:@"Scaning - Đang quét" message:@"Please wait...Xin chờ..." preferredStyle:UIAlertControllerStyleAlert];
     [self presentViewController:alert animated:YES completion:^{
         NSArray *file_map = [HideJB generateFileMap];
         NSArray *url_set = [HideJB generateSchemeArray];
@@ -55,12 +55,10 @@
     HBPreferences *prefs = [HBPreferences preferencesForIdentifier:PREFS_TWEAK_ID];
     HBPreferences *prefs_apps = [HBPreferences preferencesForIdentifier:APPS_PATH];
     HBPreferences *prefs_blacklist = [HBPreferences preferencesForIdentifier:BLACKLIST_PATH];
-    HBPreferences *prefs_dlfcn = [HBPreferences preferencesForIdentifier:DLFCN_PATH];
 
     [prefs removeAllObjects];
     [prefs_apps removeAllObjects];
     [prefs_blacklist removeAllObjects];
-    [prefs_dlfcn removeAllObjects];
     
     [self respring:sender];
 }
