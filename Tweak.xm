@@ -2741,10 +2741,10 @@ void updateDyldArray(void) {
         @"mode" : @"blacklist",
         @"enabled_bypass_checks" : @YES,
         @"enabled_exclude_safe_apps" : @YES,
-        @"auto_file_map_generation_enabled" : @YES
+        @"enabled_auto_scan_file_map" : @YES
     }];
 
-    if([prefs boolForKey:@"auto_file_map_generation_enabled"]) {
+    if([prefs boolForKey:@"enabled_auto_scan_file_map"]) {
         HBPreferences *prefs = [HBPreferences preferencesForIdentifier:BLACKLIST_PATH];
 
         NSArray *file_map = [HideJB generateFileMap];
@@ -2788,11 +2788,11 @@ void updateDyldArray(void) {
                 @"mode" : @"blacklist",
                 @"enabled_bypass_checks" : @YES,
                 @"enabled_exclude_safe_apps" : @YES,
-                @"auto_file_map_generation_enabled" : @YES
+                @"enabled_auto_scan_file_map" : @YES
             }];
             
             // Check if HideJB is enabled
-            if(![prefs boolForKey:@"enabled"]) {
+            if(![prefs boolForKey:@"enabled_hidejb"]) {
                 // HideJB disabled in preferences
                 return;
             }

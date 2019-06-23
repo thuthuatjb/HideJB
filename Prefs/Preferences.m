@@ -48,7 +48,10 @@
 }
 
 - (void)respring:(id)sender {
-    [HBRespringController respring];
+    NSTask *t = [[[NSTask alloc] init] autorelease];
+    [t setLaunchPath:@"/usr/bin/killall"];
+    [t setArguments:[NSArray arrayWithObjects:@"backboardd", nil]];
+    [t launch];
 }
 
 - (void)reset:(id)sender {

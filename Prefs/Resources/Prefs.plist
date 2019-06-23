@@ -45,6 +45,8 @@
 			<string>ENABLE_HIDEJB</string>
 		</dict>
 		<dict>
+			<key>PostNotification</key>
+			<string>ThuthuatJBHideJBPreferencesChangedNotification</string>
 			<key>cell</key>
 			<string>PSSwitchCell</string>
 			<key>default</key>
@@ -54,7 +56,7 @@
 			<key>key</key>
 			<string>enabled_nosub</string>
 			<key>label</key>
-			<string>ENABLE_FOCRETOUCH_NOSUB</string>
+			<string>ENABLE_FORCETOUCH_NOSUB</string>
 		</dict>
 		<dict>
 			<key>cell</key>
