@@ -60,7 +60,7 @@
  // HBPreferences *prefs_blacklist = [HBPreferences preferencesForIdentifier:BLACKLIST_PATH];
 
     [prefs removeAllObjects];
-    [prefs_apps removeAllObjects];
-    [prefs_blacklist removeAllObjects];
+ //   [prefs_apps removeAllObjects];
+  //  [prefs_blacklist removeAllObjects];
 }
 @end

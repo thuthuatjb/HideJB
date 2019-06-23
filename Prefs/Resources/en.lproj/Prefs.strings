@@ -35,8 +35,8 @@
 - Lock Application In SandBox helps you to restore iOS sandbox mechanism and make applications only work in its own environment by restricting application's read / write permissions.
 </string>
 	<key>NOITICE_BYBASS_MODES</key>
-	<string>- The original mode is very safe but does not work with many applications, turn off this item if you want HideJB to work more efficiently.
-- Advanced filter can trigger the wrong jailbreak detection of some applications.</string>
+	<string>- Turn off the original mode if you want HideJB to try harder.
+- Advanced filters can trigger the wrong jailbreak detection of some applications, be cautious when using.</string>
 	<key>NOITICE_SCAN_FILE_MAP</key>
 	<string>- HideJB will scan the file map and know the changes of the system, every time you install or delete tweak, the file map will change and you must perform this operation again.
 - Auto mode will scan the file map every time you Respring.</string>

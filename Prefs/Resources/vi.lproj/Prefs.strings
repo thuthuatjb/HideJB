@@ -35,8 +35,8 @@
 - Khoá Ứng Dụng Trong Hộp Cát giúp bạn khôi phục cơ chế hộp cát của iOS và làm các ứng dụng chỉ có thể hoạt động trong môi trường của riêng nó bằng cách hạn chế quyền đọc/ghi của ứng dụng.
 </string>
 	<key>NOITICE_BYBASS_MODES</key>
-	<string>- Chế độ nguyên bản rất an toàn nhưng không hoạt động với nhiều ứng dụng, tắt mục này nếu bạn muốn HideJB hoạt động hiệu quả hơn.
-	- Bộ lọc nâng cao có thể kích hoạt nhầm trình phát hiện jailbreak của một số ứng dụng.</string>
+	<string>- Tắt chế độ nguyên bản nếu bạn muốn HideJB cố gắng hơn.
+- Bộ lọc nâng cao có thể kích hoạt nhầm trình phát hiện jailbreak của một số ứng dụng, hãy thận trọng khi sử dụng.</string>
 	<key>NOITICE_SCAN_FILE_MAP</key>
 	<string>- HideJB sẽ quét bản đồ tệp tin và biết được những thay đổi của hệ thống, mỗi khi bạn cài thêm hay xoá tweak thì bản đồ tệp tin sẽ thay đổi và bạn phải thực hiện lại thao tác này.
 - Chế độ tự động sẽ quét lại bản đồ tệp mỗi khi bạn Respring.</string>

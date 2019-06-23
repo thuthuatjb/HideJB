@@ -6,7 +6,7 @@
 #import <CepheiPrefs/HBAppearanceSettings.h>
 #import <Cephei/HBPreferences.h>
 #import <Cephei/HBRespringController.h>
-#import "NSTask.h
+#import "NSTask.h"
 #import "../Includes/HideJB.h"
 
 @interface HideJBPrefsListController : HBRootListController
