@@ -68,7 +68,7 @@
 			<key>key</key>
 			<string>enabled_exclude_safe_apps</string>
 			<key>label</key>
-			<string>DISABLE_FOR_JB_SYSTEM_APP</string>
+			<string>EXCLUDE_SAFE_APP</string>
 		</dict>
 		<dict>
 			<key>cell</key>
@@ -86,25 +86,25 @@
 			<key>cell</key>
 			<string>PSSegmentCell</string>
 			<key>default</key>
-			<string>blacklist</string>
+			<string>whitelist</string>
 			<key>defaults</key>
 			<string>com.thuthuatjb.hidejb</string>
 			<key>key</key>
 			<string>mode</string>
 			<key>shortTitles</key>
 			<array>
-				<string>ALL_APPS</string>
 				<string>ONLY_SELECTED</string>
+				<string>ALL_APPS</string>
 			</array>
 			<key>validTitles</key>
 			<array>
-				<string>ALL_APPS</string>
 				<string>ONLY_SELECTED</string>
+				<string>ALL_APPS</string>
 			</array>
 			<key>validValues</key>
 			<array>
-				<string>blacklist</string>
 				<string>whitelist</string>
+				<string>blacklist</string>
 			</array>
 		</dict>
 		<dict>
@@ -128,7 +128,7 @@
 			<key>ALSettingsKeyPrefix</key>
 			<string></string>
 			<key>ALSettingsPath</key>
-			<string>/var/mobile/Library/Preferences/com.thuthuatjb.hidejb.apps.plist</string>
+			<string>/var/mobile/Library/Preferences/com.thuthuatjb.hidejb.plist</string>
 			<key>ALSingleEnabledMode</key>
 			<false/>
 			<key>bundle</key>
@@ -152,13 +152,13 @@
 			<key>cell</key>
 			<string>PSSwitchCell</string>
 			<key>default</key>
-			<false/>
+			<true/>
 			<key>defaults</key>
 			<string>com.thuthuatjb.hidejb</string>
 			<key>key</key>
-			<string>bypass_checks</string>
+			<string>enabled_bypass_checks</string>
 			<key>label</key>
-			<string>OLD_BYBASS</string>
+			<string>ORIGINAL_BYBASS</string>
 		</dict>
 		<dict>
 			<key>cell</key>
@@ -215,7 +215,7 @@
 			<key>cell</key>
 			<string>PSSwitchCell</string>
 			<key>default</key>
-			<false/>
+			<true/>
 			<key>defaults</key>
 			<string>com.thuthuatjb.hidejb</string>
 			<key>key</key>
@@ -228,7 +228,8 @@
 			<string>PSGroupCell</string>
 			<key>footerText</key>
 			<string>HideJB by TTJB Team
-Icon from iconfinder</string>
+Icon from iconfinder
+Thank to Nepeta, jjolano, inoahdev for some code</string>
 			<key>isStaticText</key>
 			<true/>
 		</dict>

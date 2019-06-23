@@ -14,8 +14,8 @@
 	<string>Huỷ</string>
 	<key>CONFIRM_SCAN_FILE_MAP</key>
 	<string>Quét bản đồ tập tin sẽ mất một khoảng thời gian, thời gian đến khi hoàn thành tuỳ thuộc vào thiết bị và số tweak bạn đã cài trên thiết bị.</string>
-	<key>DISABLE_FOR_JB_SYSTEM_APP</key>
-	<string>Tắt HideJB Với Ứ.D Hệ Thống Và JB</string>
+	<key>EXCLUDE_SAFE_APP</key>
+	<string>Ngoại Trừ Ứ.D Hệ Thống Và JB</string>
 	<key>ENABLE_FORCETOUCH_NOSUB</key>
 	<string>Kích hoạt ForceTouch Nosub</string>
 	<key>ENABLE_HIDEJB</key>
@@ -31,19 +31,19 @@
 	<key>NOITICE</key>
 	<string>- Ở chế độ tất cả ứng dụng thì tất cả ứng dụng sẽ được bảo vệ bởi HideJB ngoại trừ các ứng dụng bạn chọn.
 - Ở chế độ còn lại thì chỉ ứng dụng bạn chọn mới được HideJB bảo vệ.
-- FocreTouch Nosub giúp bạn truy cập ứng dụng mà ứng dụng nó không bị ảnh hưởng bởi các tweak bạn đã cài. Nhấn ForceTouch vào icon ở màn hình chính để truy cập chế độ này.
+- FocreTouch Nosub giúp bạn truy cập ứng dụng ở chế độ an toàn SafeMode (vô hiệu hóa các tweak trong ứng dụng). Nhấn ForceTouch vào icon ở màn hình chính để truy cập chế độ này.
 - Khoá Ứng Dụng Trong Hộp Cát giúp bạn khôi phục cơ chế hộp cát của iOS và làm các ứng dụng chỉ có thể hoạt động trong môi trường của riêng nó bằng cách hạn chế quyền đọc/ghi của ứng dụng.
 </string>
 	<key>NOITICE_BYBASS_MODES</key>
-	<string>- Chế độ truyền thống dựa trên các cách thức cũ, tắt mục này nếu bạn muốn HideJB hoạt động hiệu quả hơn.
-- Bộ lọc nâng cao có thể kích hoạt nhầm trình phát hiện jailbreak của một số ứng dụng.</string>
+	<string>- Chế độ nguyên bản rất an toàn nhưng không hoạt động với nhiều ứng dụng, tắt mục này nếu bạn muốn HideJB hoạt động hiệu quả hơn.
+	- Bộ lọc nâng cao có thể kích hoạt nhầm trình phát hiện jailbreak của một số ứng dụng.</string>
 	<key>NOITICE_SCAN_FILE_MAP</key>
 	<string>- HideJB sẽ quét bản đồ tệp tin và biết được những thay đổi của hệ thống, mỗi khi bạn cài thêm hay xoá tweak thì bản đồ tệp tin sẽ thay đổi và bạn phải thực hiện lại thao tác này.
 - Chế độ tự động sẽ quét lại bản đồ tệp mỗi khi bạn Respring.</string>
 	<key>NOTICE_RESET</key>
 	<string>Thao tác này sẽ đặt lại cài đặt mặc định của HideJB, bạn có muốn tiếp tục?</string>
-	<key>OLD_BYBASS</key>
-	<string>Chế Độ Truyền Thống</string>
+	<key>ORIGINAL_BYBASS</key>
+	<string>Chế Độ Nguyên Bản</string>
 	<key>ONLY_SELECTED</key>
 	<string>Chỉ Ứ.D Được Chọn</string>
 	<key>RESET</key>

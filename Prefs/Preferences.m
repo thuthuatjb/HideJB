@@ -56,13 +56,11 @@
 
 - (void)reset:(id)sender {
     HBPreferences *prefs = [HBPreferences preferencesForIdentifier:PREFS_TWEAK_ID];
-    HBPreferences *prefs_apps = [HBPreferences preferencesForIdentifier:APPS_PATH];
-    HBPreferences *prefs_blacklist = [HBPreferences preferencesForIdentifier:BLACKLIST_PATH];
+ // HBPreferences *prefs_apps = [HBPreferences preferencesForIdentifier:APPS_PATH];
+ // HBPreferences *prefs_blacklist = [HBPreferences preferencesForIdentifier:BLACKLIST_PATH];
 
     [prefs removeAllObjects];
     [prefs_apps removeAllObjects];
     [prefs_blacklist removeAllObjects];
-    
-    [self respring:sender];
 }
 @end

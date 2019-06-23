@@ -4,9 +4,9 @@ Depends: mobilesubstrate, ws.hbang.common (>= 1.13.1), applist, preferenceloader
 Provides: com.thuthuatjb.ibhelpervn
 Conflicts: com.thuthuatjb.ibhelpervn
 Replaces: com.thuthuatjb.ibhelpervn
-Version: 2.0.6
+Version: 1.1
 Architecture: iphoneos-arm
 Description: Hide Jailbreak for iOS App
-Maintainer: TTJB Team
-Author: TTJB Team
+Maintainer: TTJB Team <admin@thuthuatjb.com>
+Author: TTJB Team <admin@thuthuatjb.com>
 Section: Tweaks

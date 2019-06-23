@@ -14,8 +14,8 @@
 	<string>Cancel</string>
 	<key>CONFIRM_SCAN_FILE_MAP</key>
 	<string>Scanning the file map will take some time, the time to complete depends on the device and tweak number you have installed on the device.</string>
-	<key>DISABLE_FOR_JB_SYSTEM_APP</key>
-	<string>Disable HideJB For System Apps & JB Tools</string>
+	<key>EXCLUDE_SAFE_APP</key>
+	<string>Exclude System Apps & JB Tools</string>
 	<key>ENABLE_FORCETOUCH_NOSUB</key>
 	<string>Enable ForceTouch Nosub</string>
 	<key>ENABLE_HIDEJB</key>
@@ -30,20 +30,20 @@
 	<string>Lock Application In SandBox</string>
 	<key>NOITICE</key>
 	<string>- In all applications mode, all applications will be protected by HideJB except the applications you choose.
-- In the remaining mode, only the application you choose will be protected by HideJB.
-- ForceTouch Nosub helps you access applications in SafeMode mode. Click ForceTouch on the application icon on the main screen to access this mode.
+- In the selected mode, only the application you choose will be protected by HideJB.
+- ForceTouch Nosub helps you access applications in SafeMode (Disable tweak). ForceTouch on the application icon on the main screen to access this mode.
 - Lock Application In SandBox helps you to restore iOS sandbox mechanism and make applications only work in its own environment by restricting application's read / write permissions.
 </string>
 	<key>NOITICE_BYBASS_MODES</key>
-	<string>- Traditional mode based on old ways, turn off this item if you want HideJB to work more efficiently.
+	<string>- The original mode is very safe but does not work with many applications, turn off this item if you want HideJB to work more efficiently.
 - Advanced filter can trigger the wrong jailbreak detection of some applications.</string>
 	<key>NOITICE_SCAN_FILE_MAP</key>
 	<string>- HideJB will scan the file map and know the changes of the system, every time you install or delete tweak, the file map will change and you must perform this operation again.
 - Auto mode will scan the file map every time you Respring.</string>
 	<key>NOTICE_RESET</key>
 	<string>This will reset HideJB's default settings, do you want to continue?</string>
-	<key>OLD_BYBASS</key>
-	<string>Traditional Mode</string>
+	<key>ORIGINAL_BYBASS</key>
+	<string>Original Mode</string>
 	<key>ONLY_SELECTED</key>
 	<string>Only Selected</string>
 	<key>RESET</key>

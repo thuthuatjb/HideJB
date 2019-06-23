@@ -2785,7 +2785,7 @@ void updateDyldArray(void) {
 
             [prefs registerDefaults:@{
                 @"enabled_hidejb" : @YES,
-                @"mode" : @"blacklist",
+                @"mode" : @"whitelist",
                 @"enabled_bypass_checks" : @YES,
                 @"enabled_exclude_safe_apps" : @YES,
                 @"enabled_auto_scan_file_map" : @YES
