@@ -11,7 +11,7 @@
 #define PREFS_TWEAK_ID      @"com.thuthuatjb.hidejb"
 #define BLACKLIST_PATH      @"com.thuthuatjb.hidejb"
 #define APPS_PATH           @"com.thuthuatjb.hidejb"
-#define DLFCN_PATH          @"com.thuthuatjb.hidejb.plus+"
+#define DLFCN_PATH          @"com.thuthuatjb.hidejb.plus+"
 #define TWEAKCOMPAT_PATH    @"com.thuthuatjb.hidejb.plus+"
 #define LOCKDOWN_PATH       @"com.thuthuatjb.hidejb.plus+"
 

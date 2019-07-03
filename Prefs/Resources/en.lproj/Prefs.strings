@@ -25,10 +25,9 @@
 <key>PP_MODE</key>
 <string>Plus+ Mode (BETA)</string>
 	<key>NOITICE</key>
-	<string>- In all applications mode, all applications will be protected by HideJB except the applications you choose.
-- In only selected mode, only the application you choose will be protected by HideJB.
-- FocreTouch Nosub helps you access applications in safe mode SafeMode (disable in-app tweaks). Click ForceTouch on the icon in the main screen to access this mode.
+	<string>
 - Advanced filter can activate the wrong jailbreak detection of some applications, be cautious when using.
+- Plus mode will cause GPS errors in some applications.
 - Plus+ mode will turn off all tweaks in the selected application but still allow HideJB to work in that application.
 - No need to respring when changing settings.</string>
 	<key>NOITICE_SCAN_FILE_MAP</key>
