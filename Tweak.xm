@@ -1,17 +1,8 @@
-
 #import <Foundation/Foundation.h>
 #import <UIKit/UIKit.h>
 #import <Cephei/HBPreferences.h>
 #import "Includes/HideJB.h"
 
-HideJB *_hidejb = nil;
-
-NSArray *dyld_array = nil;
-uint32_t dyld_array_count = 0;
-
-// Stable Hooks
-%group hook_libc
-// #include "Hooks/Stable/libc.xm"
 #include <stdio.h>
 #include <stdlib.h>
 #include <sys/stat.h>
@@ -20,14 +11,63 @@ uint32_t dyld_array_count = 0;
 #include <spawn.h>
 #include <fcntl.h>
 #include <errno.h>
+#include <string.h>
+#include <dlfcn.h>
+#include <mach-o/dyld.h>
+#include <sys/sysctl.h>
+#include "Includes/codesign.h"
 
+static HideJB *_hidejb = nil;
+
+static NSMutableDictionary *enum_path = nil;
+
+static NSArray *dyld_array = nil;
+static uint32_t dyld_array_count = 0;
+
+static NSError *_error_file_not_found = nil;
+
+static BOOL passthrough = NO;
+
+static void updateDyldArray(void) {
+    dyld_array_count = 0;
+    dyld_array = [_hidejb generateDyldArray];
+    dyld_array_count = (uint32_t) [dyld_array count];
+
+    NSLog(@"generated dyld array (%d items)", dyld_array_count);
+}
+
+static void dyld_image_added(const struct mach_header *mh, intptr_t slide) {
+    passthrough = YES;
+
+    Dl_info info;
+    int addr = dladdr(mh, &info);
+
+    if(addr) {
+        NSString *path = [[NSFileManager defaultManager] stringWithFileSystemRepresentation:info.dli_fname length:strlen(info.dli_fname)];
+
+        if([_hidejb isImageRestricted:path]) {
+            void *handle = dlopen(info.dli_fname, RTLD_NOLOAD);
+
+            if(handle) {
+                dlclose(handle);
+
+                NSLog(@"unloaded %s", info.dli_fname);
+            }
+        }
+    }
+
+    passthrough = NO;
+}
+
+// Stable Hooks
+%group hook_libc
 %hookf(int, access, const char *pathname, int mode) {
     if(pathname) {
-        NSString *path = [NSString stringWithUTF8String:pathname];
+        NSString *path = [[NSFileManager defaultManager] stringWithFileSystemRepresentation:pathname length:strlen(pathname)];
 
         // workaround for tweaks not loading properly in Substrate
         if([_hidejb useInjectCompatibilityMode]) {
-            if([[path pathExtension] isEqualToString:@"plist"] && [path containsString:@"DynamicLibraries/"]) {
+            if([[path pathExtension] isEqualToString:@"plist"] && [path hasPrefix:@"/Library/MobileSubstrate"]) {
                 return %orig;
             }
         }
@@ -57,7 +97,9 @@ uint32_t dyld_array_count = 0;
 
 %hookf(FILE *, fopen, const char *pathname, const char *mode) {
     if(pathname) {
-        if([_hidejb isPathRestricted:[NSString stringWithUTF8String:pathname]]) {
+        NSString *path = [[NSFileManager defaultManager] stringWithFileSystemRepresentation:pathname length:strlen(pathname)];
+        
+        if([_hidejb isPathRestricted:path]) {
             errno = ENOENT;
             return NULL;
         }
@@ -68,7 +110,9 @@ uint32_t dyld_array_count = 0;
 
 %hookf(FILE *, freopen, const char *pathname, const char *mode, FILE *stream) {
     if(pathname) {
-        if([_hidejb isPathRestricted:[NSString stringWithUTF8String:pathname]]) {
+        NSString *path = [[NSFileManager defaultManager] stringWithFileSystemRepresentation:pathname length:strlen(pathname)];
+
+        if([_hidejb isPathRestricted:path]) {
             fclose(stream);
             errno = ENOENT;
             return NULL;
@@ -80,7 +124,7 @@ uint32_t dyld_array_count = 0;
 
 %hookf(int, stat, const char *pathname, struct stat *statbuf) {
     if(pathname) {
-        NSString *path = [NSString stringWithUTF8String:pathname];
+        NSString *path = [[NSFileManager defaultManager] stringWithFileSystemRepresentation:pathname length:strlen(pathname)];
 
         if([_hidejb isPathRestricted:path]) {
             errno = ENOENT;
@@ -105,7 +149,7 @@ uint32_t dyld_array_count = 0;
 
 %hookf(int, lstat, const char *pathname, struct stat *statbuf) {
     if(pathname) {
-        NSString *path = [NSString stringWithUTF8String:pathname];
+        NSString *path = [[NSFileManager defaultManager] stringWithFileSystemRepresentation:pathname length:strlen(pathname)];
 
         if([_hidejb isPathRestricted:path]) {
             errno = ENOENT;
@@ -150,7 +194,7 @@ uint32_t dyld_array_count = 0;
         char path[PATH_MAX];
 
         if(fcntl(fd, F_GETPATH, path) != -1) {
-            NSString *pathname = [NSString stringWithUTF8String:path];
+            NSString *pathname = [[NSFileManager defaultManager] stringWithFileSystemRepresentation:path length:strlen(path)];
 
             if([_hidejb isPathRestricted:pathname]) {
                 errno = ENOENT;
@@ -181,7 +225,7 @@ uint32_t dyld_array_count = 0;
     int ret = %orig;
 
     if(ret == 0) {
-        NSString *pathname = [NSString stringWithUTF8String:path];
+        NSString *pathname = [[NSFileManager defaultManager] stringWithFileSystemRepresentation:path length:strlen(path)];
 
         if([_hidejb isPathRestricted:pathname]) {
             errno = ENOENT;
@@ -190,21 +234,17 @@ uint32_t dyld_array_count = 0;
 
         pathname = [_hidejb resolveLinkInPath:pathname];
 
-        if([pathname hasPrefix:@"/var/mobile/Containers/Data/Application"]) {
-            if(buf) {
-                // Ensure application sandbox is marked NOSUID.
-                buf->f_flags |= MNT_NOSUID | MNT_NODEV;
-                return ret;
-            }
-        }
-        
         if(![pathname hasPrefix:@"/var"]
         && ![pathname hasPrefix:@"/private/var"]) {
             if(buf) {
-                // Ensure root is marked read-only.
+                // Ensure root fs is marked read-only.
                 buf->f_flags |= MNT_RDONLY | MNT_ROOTFS;
                 return ret;
             }
+        } else {
+            // Ensure var fs is marked NOSUID.
+            buf->f_flags |= MNT_NOSUID | MNT_NODEV;
+            return ret;
         }
     }
 
@@ -213,7 +253,7 @@ uint32_t dyld_array_count = 0;
 
 %hookf(int, posix_spawn, pid_t *pid, const char *pathname, const posix_spawn_file_actions_t *file_actions, const posix_spawnattr_t *attrp, char *const argv[], char *const envp[]) {
     if(pathname) {
-        NSString *path = [NSString stringWithUTF8String:pathname];
+        NSString *path = [[NSFileManager defaultManager] stringWithFileSystemRepresentation:pathname length:strlen(pathname)];
 
         if([_hidejb isPathRestricted:path]) {
             return ENOENT;
@@ -225,7 +265,7 @@ uint32_t dyld_array_count = 0;
 
 %hookf(int, posix_spawnp, pid_t *pid, const char *pathname, const posix_spawn_file_actions_t *file_actions, const posix_spawnattr_t *attrp, char *const argv[], char *const envp[]) {
     if(pathname) {
-        NSString *path = [NSString stringWithUTF8String:pathname];
+        NSString *path = [[NSFileManager defaultManager] stringWithFileSystemRepresentation:pathname length:strlen(pathname)];
 
         if([_hidejb isPathRestricted:path]) {
             return ENOENT;
@@ -237,9 +277,12 @@ uint32_t dyld_array_count = 0;
 
 %hookf(char *, realpath, const char *pathname, char *resolved_path) {
     BOOL doFree = (resolved_path != NULL);
+    NSString *path = nil;
 
     if(pathname) {
-        if([_hidejb isPathRestricted:[NSString stringWithUTF8String:pathname]]) {
+        path = [[NSFileManager defaultManager] stringWithFileSystemRepresentation:pathname length:strlen(pathname)];
+
+        if([_hidejb isPathRestricted:path]) {
             errno = ENOENT;
             return NULL;
         }
@@ -249,7 +292,9 @@ uint32_t dyld_array_count = 0;
 
     // Recheck resolved path.
     if(ret) {
-        if([_hidejb isPathRestricted:[NSString stringWithUTF8String:ret]]) {
+        NSString *resolved_path_ns = [[NSFileManager defaultManager] stringWithFileSystemRepresentation:ret length:strlen(ret)];
+
+        if([_hidejb isPathRestricted:resolved_path_ns]) {
             errno = ENOENT;
 
             // Free resolved_path if it was allocated by libc.
@@ -262,7 +307,7 @@ uint32_t dyld_array_count = 0;
 
         if(strcmp(ret, pathname) != 0) {
             // Possible symbolic link? Track it in HideJB
-            [_hidejb addLinkFromPath:[NSString stringWithUTF8String:pathname] toPath:[NSString stringWithUTF8String:ret]];
+            [_hidejb addLinkFromPath:path toPath:resolved_path_ns];
         }
     }
 
@@ -270,8 +315,14 @@ uint32_t dyld_array_count = 0;
 }
 
 %hookf(int, symlink, const char *path1, const char *path2) {
+    NSString *path1_ns = nil;
+    NSString *path2_ns = nil;
+
     if(path1 && path2) {
-        if([_hidejb isPathRestricted:[NSString stringWithUTF8String:path1]] || [_hidejb isPathRestricted:[NSString stringWithUTF8String:path2]]) {
+        path1_ns = [[NSFileManager defaultManager] stringWithFileSystemRepresentation:path1 length:strlen(path1)];
+        path2_ns = [[NSFileManager defaultManager] stringWithFileSystemRepresentation:path2 length:strlen(path2)];
+
+        if([_hidejb isPathRestricted:path1_ns] || [_hidejb isPathRestricted:path2_ns]) {
             errno = ENOENT;
             return -1;
         }
@@ -281,40 +332,65 @@ uint32_t dyld_array_count = 0;
 
     if(ret == 0) {
         // Track this symlink in HideJB
-        [_hidejb addLinkFromPath:[NSString stringWithUTF8String:path1] toPath:[NSString stringWithUTF8String:path2]];
+        [_hidejb addLinkFromPath:path1_ns toPath:path2_ns];
     }
 
     return ret;
 }
 
-%hookf(int, link, const char *path1, const char *path2) {
-    if(path1 && path2) {
-        if([_hidejb isPathRestricted:[NSString stringWithUTF8String:path1]] || [_hidejb isPathRestricted:[NSString stringWithUTF8String:path2]]) {
+%hookf(int, rename, const char *oldname, const char *newname) {
+    NSString *oldname_ns = nil;
+    NSString *newname_ns = nil;
+
+    if(oldname && newname) {
+        oldname_ns = [[NSFileManager defaultManager] stringWithFileSystemRepresentation:oldname length:strlen(oldname)];
+        newname_ns = [[NSFileManager defaultManager] stringWithFileSystemRepresentation:newname length:strlen(newname)];
+
+        if([_hidejb isPathRestricted:oldname_ns] || [_hidejb isPathRestricted:newname_ns]) {
             errno = ENOENT;
             return -1;
         }
     }
 
-    int ret = %orig;
-
-    if(ret == 0) {
-        // Track this symlink in HideJB
-        [_hidejb addLinkFromPath:[NSString stringWithUTF8String:path1] toPath:[NSString stringWithUTF8String:path2]];
-    }
-
-    return ret;
+    return %orig;
 }
 
-%hookf(int, fstatat, int dirfd, const char *pathname, struct stat *buf, int flags) {
+%hookf(int, remove, const char *filename) {
+    if(filename) {
+        NSString *path = [[NSFileManager defaultManager] stringWithFileSystemRepresentation:filename length:strlen(filename)];
+
+        if([_hidejb isPathRestricted:path]) {
+            errno = ENOENT;
+            return -1;
+        }
+    }
+
+    return %orig;
+}
+
+%hookf(int, unlink, const char *pathname) {
     if(pathname) {
-        NSString *path = [NSString stringWithUTF8String:pathname];
+        NSString *path = [[NSFileManager defaultManager] stringWithFileSystemRepresentation:pathname length:strlen(pathname)];
+
+        if([_hidejb isPathRestricted:path]) {
+            errno = ENOENT;
+            return -1;
+        }
+    }
+
+    return %orig;
+}
+
+%hookf(int, unlinkat, int dirfd, const char *pathname, int flags) {
+    if(pathname) {
+        NSString *path = [[NSFileManager defaultManager] stringWithFileSystemRepresentation:pathname length:strlen(pathname)];
 
         if(![path isAbsolutePath]) {
             // Get path of dirfd.
             char dirfdpath[PATH_MAX];
         
             if(fcntl(dirfd, F_GETPATH, dirfdpath) != -1) {
-                NSString *dirfd_path = [NSString stringWithUTF8String:dirfdpath];
+                NSString *dirfd_path = [[NSFileManager defaultManager] stringWithFileSystemRepresentation:dirfdpath length:strlen(dirfdpath)];
                 path = [dirfd_path stringByAppendingPathComponent:path];
             }
         }
@@ -327,6 +403,136 @@ uint32_t dyld_array_count = 0;
 
     return %orig;
 }
+
+%hookf(int, rmdir, const char *pathname) {
+    if(pathname) {
+        NSString *path = [[NSFileManager defaultManager] stringWithFileSystemRepresentation:pathname length:strlen(pathname)];
+
+        if([_hidejb isPathRestricted:path]) {
+            errno = ENOENT;
+            return -1;
+        }
+    }
+
+    return %orig;
+}
+
+%hookf(int, chdir, const char *pathname) {
+    if(pathname) {
+        NSString *path = [[NSFileManager defaultManager] stringWithFileSystemRepresentation:pathname length:strlen(pathname)];
+
+        if([_hidejb isPathRestricted:path]) {
+            errno = ENOENT;
+            return -1;
+        }
+    }
+
+    return %orig;
+}
+
+%hookf(int, fchdir, int fd) {
+    char dirfdpath[PATH_MAX];
+
+    if(fcntl(fd, F_GETPATH, dirfdpath) != -1) {
+        NSString *path = [[NSFileManager defaultManager] stringWithFileSystemRepresentation:dirfdpath length:strlen(dirfdpath)];
+
+        if([_hidejb isPathRestricted:path]) {
+            errno = ENOENT;
+            return -1;
+        }
+    }
+
+    return %orig;
+}
+
+%hookf(int, link, const char *path1, const char *path2) {
+    NSString *path1_ns = nil;
+    NSString *path2_ns = nil;
+
+    if(path1 && path2) {
+        path1_ns = [[NSFileManager defaultManager] stringWithFileSystemRepresentation:path1 length:strlen(path1)];
+        path2_ns = [[NSFileManager defaultManager] stringWithFileSystemRepresentation:path2 length:strlen(path2)];
+
+        if([_hidejb isPathRestricted:path1_ns] || [_hidejb isPathRestricted:path2_ns]) {
+            errno = ENOENT;
+            return -1;
+        }
+    }
+
+    int ret = %orig;
+
+    if(ret == 0) {
+        // Track this symlink in HideJB
+        [_hidejb addLinkFromPath:path1_ns toPath:path2_ns];
+    }
+
+    return ret;
+}
+
+%hookf(int, fstatat, int dirfd, const char *pathname, struct stat *buf, int flags) {
+    if(pathname) {
+        NSString *path = [[NSFileManager defaultManager] stringWithFileSystemRepresentation:pathname length:strlen(pathname)];
+
+        if(![path isAbsolutePath]) {
+            // Get path of dirfd.
+            char dirfdpath[PATH_MAX];
+        
+            if(fcntl(dirfd, F_GETPATH, dirfdpath) != -1) {
+                NSString *dirfd_path = [[NSFileManager defaultManager] stringWithFileSystemRepresentation:dirfdpath length:strlen(dirfdpath)];
+                path = [dirfd_path stringByAppendingPathComponent:path];
+            }
+        }
+        
+        if([_hidejb isPathRestricted:path]) {
+            errno = ENOENT;
+            return -1;
+        }
+    }
+
+    return %orig;
+}
+
+%hookf(int, faccessat, int dirfd, const char *pathname, int mode, int flags) {
+    if(pathname) {
+        NSString *path = [[NSFileManager defaultManager] stringWithFileSystemRepresentation:pathname length:strlen(pathname)];
+
+        if(![path isAbsolutePath]) {
+            // Get path of dirfd.
+            char dirfdpath[PATH_MAX];
+        
+            if(fcntl(dirfd, F_GETPATH, dirfdpath) != -1) {
+                NSString *dirfd_path = [[NSFileManager defaultManager] stringWithFileSystemRepresentation:dirfdpath length:strlen(dirfdpath)];
+                path = [dirfd_path stringByAppendingPathComponent:path];
+            }
+        }
+        
+        if([_hidejb isPathRestricted:path]) {
+            errno = ENOENT;
+            return -1;
+        }
+    }
+
+    return %orig;
+}
+
+%hookf(int, chroot, const char *dirname) {
+    if(dirname) {
+        NSString *path = [[NSFileManager defaultManager] stringWithFileSystemRepresentation:dirname length:strlen(dirname)];
+
+        if([_hidejb isPathRestricted:path]) {
+            errno = ENOENT;
+            return -1;
+        }
+    }
+
+    int ret = %orig;
+
+    if(ret == 0) {
+        [_hidejb addLinkFromPath:@"/" toPath:[[NSFileManager defaultManager] stringWithFileSystemRepresentation:dirname length:strlen(dirname)]];
+    }
+
+    return ret;
+}
 %end
 
 %group hook_libc_inject
@@ -335,7 +541,7 @@ uint32_t dyld_array_count = 0;
     char fdpath[PATH_MAX];
 
     if(fcntl(fd, F_GETPATH, fdpath) != -1) {
-        NSString *fd_path = [NSString stringWithUTF8String:fdpath];
+        NSString *fd_path = [[NSFileManager defaultManager] stringWithFileSystemRepresentation:fdpath length:strlen(fdpath)];
         
         if([_hidejb isPathRestricted:fd_path]) {
             errno = EBADF;
@@ -360,8 +566,8 @@ uint32_t dyld_array_count = 0;
 
 %group hook_dlopen_inject
 %hookf(void *, dlopen, const char *path, int mode) {
-    if(path) {
-        NSString *image_name = [NSString stringWithUTF8String:path];
+    if(!passthrough && path) {
+        NSString *image_name = [[NSFileManager defaultManager] stringWithFileSystemRepresentation:path length:strlen(path)];
 
         if([_hidejb isImageRestricted:image_name]) {
             return NULL;
@@ -386,7 +592,7 @@ uint32_t dyld_array_count = 0;
 + (instancetype)fileHandleForReadingFromURL:(NSURL *)url error:(NSError * _Nullable *)error {
     if([_hidejb isURLRestricted:url]) {
         if(error) {
-            *error = [HideJB generateFileNotFoundError];
+            *error = _error_file_not_found;
         }
 
         return nil;
@@ -406,7 +612,7 @@ uint32_t dyld_array_count = 0;
 + (instancetype)fileHandleForWritingToURL:(NSURL *)url error:(NSError * _Nullable *)error {
     if([_hidejb isURLRestricted:url]) {
         if(error) {
-            *error = [HideJB generateFileNotFoundError];
+            *error = _error_file_not_found;
         }
 
         return nil;
@@ -426,7 +632,7 @@ uint32_t dyld_array_count = 0;
 + (instancetype)fileHandleForUpdatingURL:(NSURL *)url error:(NSError * _Nullable *)error {
     if([_hidejb isURLRestricted:url]) {
         if(error) {
-            *error = [HideJB generateFileNotFoundError];
+            *error = _error_file_not_found;
         }
 
         return nil;
@@ -438,7 +644,6 @@ uint32_t dyld_array_count = 0;
 %end
 
 %group hook_NSFileManager
-// #include "Hooks/Stable/NSFileManager.xm"
 %hook NSFileManager
 - (BOOL)fileExistsAtPath:(NSString *)path {
     if([_hidejb isPathRestricted:path manager:self]) {
@@ -488,10 +693,62 @@ uint32_t dyld_array_count = 0;
     return %orig;
 }
 
+- (NSURL *)URLForDirectory:(NSSearchPathDirectory)directory inDomain:(NSSearchPathDomainMask)domain appropriateForURL:(NSURL *)url create:(BOOL)shouldCreate error:(NSError * _Nullable *)error {
+    if([_hidejb isURLRestricted:url manager:self]) {
+        if(error) {
+            *error = _error_file_not_found;
+        }
+
+        return nil;
+    }
+
+    return %orig;
+}
+
+- (NSArray<NSURL *> *)URLsForDirectory:(NSSearchPathDirectory)directory inDomains:(NSSearchPathDomainMask)domainMask {
+    NSArray *ret = %orig;
+
+    if(ret) {
+        NSMutableArray *toRemove = [NSMutableArray new];
+        NSMutableArray *filtered = [ret mutableCopy];
+
+        for(NSURL *url in filtered) {
+            if([_hidejb isURLRestricted:url manager:self]) {
+                [toRemove addObject:url];
+            }
+        }
+
+        [filtered removeObjectsInArray:toRemove];
+        ret = [filtered copy];
+    }
+
+    return ret;
+}
+
+- (BOOL)isUbiquitousItemAtURL:(NSURL *)url {
+    if([_hidejb isURLRestricted:url manager:self]) {
+        return NO;
+    }
+
+    return %orig;
+}
+
+- (BOOL)setUbiquitous:(BOOL)flag itemAtURL:(NSURL *)url destinationURL:(NSURL *)destinationURL error:(NSError * _Nullable *)error {
+    if([_hidejb isURLRestricted:url manager:self]) {
+        if(error) {
+            *error = _error_file_not_found;
+        }
+
+        return NO;
+    }
+
+    return %orig;
+}
+
 - (BOOL)replaceItemAtURL:(NSURL *)originalItemURL withItemAtURL:(NSURL *)newItemURL backupItemName:(NSString *)backupItemName options:(NSFileManagerItemReplacementOptions)options resultingItemURL:(NSURL * _Nullable *)resultingURL error:(NSError * _Nullable *)error {
     if([_hidejb isURLRestricted:originalItemURL manager:self] || [_hidejb isURLRestricted:newItemURL manager:self]) {
         if(error) {
-            *error = [HideJB generateFileNotFoundError];
+            *error = _error_file_not_found;
         }
 
         return NO;
@@ -503,7 +760,7 @@ uint32_t dyld_array_count = 0;
 - (NSArray<NSURL *> *)contentsOfDirectoryAtURL:(NSURL *)url includingPropertiesForKeys:(NSArray<NSURLResourceKey> *)keys options:(NSDirectoryEnumerationOptions)mask error:(NSError * _Nullable *)error {
     if([_hidejb isURLRestricted:url manager:self]) {
         if(error) {
-            *error = [HideJB generateFileNotFoundError];
+            *error = _error_file_not_found;
         }
 
         return nil;
@@ -529,7 +786,7 @@ uint32_t dyld_array_count = 0;
 - (NSArray<NSString *> *)contentsOfDirectoryAtPath:(NSString *)path error:(NSError * _Nullable *)error {
     if([_hidejb isPathRestricted:path manager:self]) {
         if(error) {
-            *error = [HideJB generateFileNotFoundError];
+            *error = _error_file_not_found;
         }
 
         return nil;
@@ -555,7 +812,7 @@ uint32_t dyld_array_count = 0;
 
 - (NSDirectoryEnumerator<NSURL *> *)enumeratorAtURL:(NSURL *)url includingPropertiesForKeys:(NSArray<NSURLResourceKey> *)keys options:(NSDirectoryEnumerationOptions)mask errorHandler:(BOOL (^)(NSURL *url, NSError *error))handler {
     if([_hidejb isURLRestricted:url manager:self]) {
-        return %orig([NSURL fileURLWithPath:@"file:///.file"], keys, mask, handler);
+        return %orig([NSURL fileURLWithPath:@"/.file"], keys, mask, handler);
     }
 
     return %orig;
@@ -566,13 +823,20 @@ uint32_t dyld_array_count = 0;
         return %orig(@"/.file");
     }
 
-    return %orig;
+    NSDirectoryEnumerator *ret = %orig;
+
+    if(ret && enum_path) {
+        // Store this path.
+        [enum_path setObject:path forKey:[NSValue valueWithNonretainedObject:ret]];
+    }
+
+    return ret;
 }
 
 - (NSArray<NSString *> *)subpathsOfDirectoryAtPath:(NSString *)path error:(NSError * _Nullable *)error {
     if([_hidejb isPathRestricted:path manager:self]) {
         if(error) {
-            *error = [HideJB generateFileNotFoundError];
+            *error = _error_file_not_found;
         }
 
         return nil;
@@ -622,7 +886,7 @@ uint32_t dyld_array_count = 0;
 - (BOOL)copyItemAtURL:(NSURL *)srcURL toURL:(NSURL *)dstURL error:(NSError * _Nullable *)error {
     if([_hidejb isURLRestricted:srcURL manager:self] || [_hidejb isURLRestricted:dstURL manager:self]) {
         if(error) {
-            *error = [HideJB generateFileNotFoundError];
+            *error = _error_file_not_found;
         }
 
         return NO;
@@ -634,7 +898,7 @@ uint32_t dyld_array_count = 0;
 - (BOOL)copyItemAtPath:(NSString *)srcPath toPath:(NSString *)dstPath error:(NSError * _Nullable *)error {
     if([_hidejb isPathRestricted:srcPath manager:self] || [_hidejb isPathRestricted:dstPath manager:self]) {
         if(error) {
-            *error = [HideJB generateFileNotFoundError];
+            *error = _error_file_not_found;
         }
 
         return NO;
@@ -646,7 +910,7 @@ uint32_t dyld_array_count = 0;
 - (BOOL)moveItemAtURL:(NSURL *)srcURL toURL:(NSURL *)dstURL error:(NSError * _Nullable *)error {
     if([_hidejb isURLRestricted:srcURL manager:self] || [_hidejb isURLRestricted:dstURL manager:self]) {
         if(error) {
-            *error = [HideJB generateFileNotFoundError];
+            *error = _error_file_not_found;
         }
 
         return NO;
@@ -658,7 +922,7 @@ uint32_t dyld_array_count = 0;
 - (BOOL)moveItemAtPath:(NSString *)srcPath toPath:(NSString *)dstPath error:(NSError * _Nullable *)error {
     if([_hidejb isPathRestricted:srcPath manager:self] || [_hidejb isPathRestricted:dstPath manager:self]) {
         if(error) {
-            *error = [HideJB generateFileNotFoundError];
+            *error = _error_file_not_found;
         }
 
         return NO;
@@ -686,7 +950,7 @@ uint32_t dyld_array_count = 0;
 - (NSDictionary<NSFileAttributeKey, id> *)attributesOfItemAtPath:(NSString *)path error:(NSError * _Nullable *)error {
     if([_hidejb isPathRestricted:path manager:self]) {
         if(error) {
-            *error = [HideJB generateFileNotFoundError];
+            *error = _error_file_not_found;
         }
 
         return nil;
@@ -698,7 +962,7 @@ uint32_t dyld_array_count = 0;
 - (NSDictionary<NSFileAttributeKey, id> *)attributesOfFileSystemForPath:(NSString *)path error:(NSError * _Nullable *)error {
     if([_hidejb isPathRestricted:path manager:self]) {
         if(error) {
-            *error = [HideJB generateFileNotFoundError];
+            *error = _error_file_not_found;
         }
 
         return nil;
@@ -710,7 +974,7 @@ uint32_t dyld_array_count = 0;
 - (BOOL)setAttributes:(NSDictionary<NSFileAttributeKey, id> *)attributes ofItemAtPath:(NSString *)path error:(NSError * _Nullable *)error {
     if([_hidejb isPathRestricted:path manager:self]) {
         if(error) {
-            *error = [HideJB generateFileNotFoundError];
+            *error = _error_file_not_found;
         }
 
         return NO;
@@ -738,7 +1002,7 @@ uint32_t dyld_array_count = 0;
 - (BOOL)getRelationship:(NSURLRelationship *)outRelationship ofDirectoryAtURL:(NSURL *)directoryURL toItemAtURL:(NSURL *)otherURL error:(NSError * _Nullable *)error {
     if([_hidejb isURLRestricted:directoryURL manager:self] || [_hidejb isURLRestricted:otherURL manager:self]) {
         if(error) {
-            *error = [HideJB generateFileNotFoundError];
+            *error = _error_file_not_found;
         }
 
         return NO;
@@ -750,7 +1014,7 @@ uint32_t dyld_array_count = 0;
 - (BOOL)getRelationship:(NSURLRelationship *)outRelationship ofDirectory:(NSSearchPathDirectory)directory inDomain:(NSSearchPathDomainMask)domainMask toItemAtURL:(NSURL *)otherURL error:(NSError * _Nullable *)error {
     if([_hidejb isURLRestricted:otherURL manager:self]) {
         if(error) {
-            *error = [HideJB generateFileNotFoundError];
+            *error = _error_file_not_found;
         }
 
         return NO;
@@ -770,7 +1034,7 @@ uint32_t dyld_array_count = 0;
 - (BOOL)createSymbolicLinkAtURL:(NSURL *)url withDestinationURL:(NSURL *)destURL error:(NSError * _Nullable *)error {
     if([_hidejb isURLRestricted:url manager:self] || [_hidejb isURLRestricted:destURL manager:self]) {
         if(error) {
-            *error = [HideJB generateFileNotFoundError];
+            *error = _error_file_not_found;
         }
 
         return NO;
@@ -789,7 +1053,7 @@ uint32_t dyld_array_count = 0;
 - (BOOL)createSymbolicLinkAtPath:(NSString *)path withDestinationPath:(NSString *)destPath error:(NSError * _Nullable *)error {
     if([_hidejb isPathRestricted:path] || [_hidejb isPathRestricted:destPath]) {
         if(error) {
-            *error = [HideJB generateFileNotFoundError];
+            *error = _error_file_not_found;
         }
 
         return NO;
@@ -808,7 +1072,7 @@ uint32_t dyld_array_count = 0;
 - (BOOL)linkItemAtURL:(NSURL *)srcURL toURL:(NSURL *)dstURL error:(NSError * _Nullable *)error {
     if([_hidejb isURLRestricted:srcURL manager:self] || [_hidejb isURLRestricted:dstURL manager:self]) {
         if(error) {
-            *error = [HideJB generateFileNotFoundError];
+            *error = _error_file_not_found;
         }
 
         return NO;
@@ -827,7 +1091,7 @@ uint32_t dyld_array_count = 0;
 - (BOOL)linkItemAtPath:(NSString *)srcPath toPath:(NSString *)dstPath error:(NSError * _Nullable *)error {
     if([_hidejb isPathRestricted:srcPath manager:self] || [_hidejb isPathRestricted:dstPath manager:self]) {
         if(error) {
-            *error = [HideJB generateFileNotFoundError];
+            *error = _error_file_not_found;
         }
 
         return NO;
@@ -846,7 +1110,7 @@ uint32_t dyld_array_count = 0;
 - (NSString *)destinationOfSymbolicLinkAtPath:(NSString *)path error:(NSError * _Nullable *)error {
     if([_hidejb isPathRestricted:path manager:self]) {
         if(error) {
-            *error = [HideJB generateFileNotFoundError];
+            *error = _error_file_not_found;
         }
 
         return nil;
@@ -868,19 +1132,30 @@ uint32_t dyld_array_count = 0;
 %hook NSDirectoryEnumerator
 - (id)nextObject {
     id ret = nil;
+    NSString *parent = nil;
+
+    if(enum_path) {
+        parent = enum_path[[NSValue valueWithNonretainedObject:self]];
+    }
 
     while((ret = %orig)) {
         if([ret isKindOfClass:[NSURL class]]) {
-            if([_hidejb isURLRestricted:ret]) {
-                continue;
+            if(![_hidejb isURLRestricted:ret]) {
+                break;
             }
         }
 
         if([ret isKindOfClass:[NSString class]]) {
-            // TODO: convert to absolute path
-        }
+            if(parent) {
+                NSString *path = [parent stringByAppendingPathComponent:ret];
 
-        break;
+                if(![_hidejb isPathRestricted:path]) {
+                    break;
+                }
+            } else {
+                break;
+            }
+        }
     }
 
     return ret;
@@ -888,16 +1163,171 @@ uint32_t dyld_array_count = 0;
 %end
 %end
 
+%group hook_NSFileWrapper
+%hook NSFileWrapper
+- (instancetype)initWithURL:(NSURL *)url options:(NSFileWrapperReadingOptions)options error:(NSError * _Nullable *)outError {
+    if([_hidejb isURLRestricted:url]) {
+        if(outError) {
+            *outError = _error_file_not_found;
+        }
+
+        return 0;
+    }
+
+    return %orig;
+}
+
+- (instancetype)initSymbolicLinkWithDestinationURL:(NSURL *)url {
+    if([_hidejb isURLRestricted:url]) {
+        return 0;
+    }
+
+    return %orig;
+}
+
+- (BOOL)matchesContentsOfURL:(NSURL *)url {
+    if([_hidejb isURLRestricted:url]) {
+        return NO;
+    }
+
+    return %orig;
+}
+
+- (BOOL)readFromURL:(NSURL *)url options:(NSFileWrapperReadingOptions)options error:(NSError * _Nullable *)outError {
+    if([_hidejb isURLRestricted:url]) {
+        if(outError) {
+            *outError = _error_file_not_found;
+        }
+
+        return NO;
+    }
+
+    return %orig;
+}
+
+- (BOOL)writeToURL:(NSURL *)url options:(NSFileWrapperWritingOptions)options originalContentsURL:(NSURL *)originalContentsURL error:(NSError * _Nullable *)outError {
+    if([_hidejb isURLRestricted:url]) {
+        if(outError) {
+            *outError = _error_file_not_found;
+        }
+
+        return NO;
+    }
+
+    return %orig;
+}
+%end
+%end
+
+%group hook_NSFileVersion
+%hook NSFileVersion
++ (NSFileVersion *)currentVersionOfItemAtURL:(NSURL *)url {
+    if([_hidejb isURLRestricted:url]) {
+        return nil;
+    }
+
+    return %orig;
+}
+
++ (NSArray<NSFileVersion *> *)otherVersionsOfItemAtURL:(NSURL *)url {
+    if([_hidejb isURLRestricted:url]) {
+        return nil;
+    }
+
+    return %orig;
+}
+
++ (NSFileVersion *)versionOfItemAtURL:(NSURL *)url forPersistentIdentifier:(id)persistentIdentifier {
+    if([_hidejb isURLRestricted:url]) {
+        return nil;
+    }
+
+    return %orig;
+}
+
++ (NSURL *)temporaryDirectoryURLForNewVersionOfItemAtURL:(NSURL *)url {
+    if([_hidejb isURLRestricted:url]) {
+        return nil;
+    }
+
+    return %orig;
+}
+
++ (NSFileVersion *)addVersionOfItemAtURL:(NSURL *)url withContentsOfURL:(NSURL *)contentsURL options:(NSFileVersionAddingOptions)options error:(NSError * _Nullable *)outError {
+    if([_hidejb isURLRestricted:url] || [_hidejb isURLRestricted:contentsURL]) {
+        if(outError) {
+            *outError = _error_file_not_found;
+        }
+
+        return nil;
+    }
+
+    return %orig;
+}
+
++ (NSArray<NSFileVersion *> *)unresolvedConflictVersionsOfItemAtURL:(NSURL *)url {
+    if([_hidejb isURLRestricted:url]) {
+        return nil;
+    }
+
+    return %orig;
+}
+
+- (NSURL *)replaceItemAtURL:(NSURL *)url options:(NSFileVersionReplacingOptions)options error:(NSError * _Nullable *)error {
+    if([_hidejb isURLRestricted:url]) {
+        if(error) {
+            *error = _error_file_not_found;
+        }
+
+        return nil;
+    }
+
+    return %orig;
+}
+
++ (BOOL)removeOtherVersionsOfItemAtURL:(NSURL *)url error:(NSError * _Nullable *)outError {
+    if([_hidejb isURLRestricted:url]) {
+        if(outError) {
+            *outError = _error_file_not_found;
+        }
+
+        return NO;
+    }
+
+    return %orig;
+}
+
++ (void)getNonlocalVersionsOfItemAtURL:(NSURL *)url completionHandler:(void (^)(NSArray<NSFileVersion *> *nonlocalFileVersions, NSError *error))completionHandler {
+    if([_hidejb isURLRestricted:url]) {
+        if(completionHandler) {
+            completionHandler(nil, _error_file_not_found);
+        }
+
+        return;
+    }
+
+    %orig;
+}
+%end
+%end
+
 %group hook_NSURL
-// #include "Hooks/Stable/NSURL.xm"
 %hook NSURL
 - (BOOL)checkResourceIsReachableAndReturnError:(NSError * _Nullable *)error {
     if([_hidejb isURLRestricted:self]) {
         if(error) {
-            *error = [HideJB generateFileNotFoundError];
+            *error = _error_file_not_found;
         }
 
         return NO;
+    }
+
+    return %orig;
+}
+
+- (NSURL *)fileReferenceURL {
+    if([_hidejb isURLRestricted:self]) {
+        return nil;
     }
 
     return %orig;
@@ -906,7 +1336,6 @@ uint32_t dyld_array_count = 0;
 %end
 
 %group hook_UIApplication
-// #include "Hooks/Stable/UIApplication.xm"
 %hook UIApplication
 - (BOOL)canOpenURL:(NSURL *)url {
     if([_hidejb isURLRestricted:url]) {
@@ -915,6 +1344,24 @@ uint32_t dyld_array_count = 0;
 
     return %orig;
 }
+/*
+- (BOOL)openURL:(NSURL *)url {
+    if([_hidejb isURLRestricted:url]) {
+        return NO;
+    }
+
+    return %orig;
+}
+
+- (void)openURL:(NSURL *)url options:(NSDictionary<id, id> *)options completionHandler:(void (^)(BOOL success))completion {
+    if([_hidejb isURLRestricted:url]) {
+        completion(NO);
+        return;
+    }
+
+    %orig;
+}
+*/
 %end
 %end
 
@@ -930,7 +1377,7 @@ uint32_t dyld_array_count = 0;
 }
 %end
 %end
-
+/*
 %group hook_CoreFoundation
 %hookf(CFArrayRef, CFBundleGetAllBundles) {
     CFArrayRef cfbundles = %orig;
@@ -959,7 +1406,6 @@ uint32_t dyld_array_count = 0;
     return (__bridge CFArrayRef) [filter copy];
 }
 
-/*
 %hookf(CFReadStreamRef, CFReadStreamCreateWithFile, CFAllocatorRef alloc, CFURLRef fileURL) {
     NSURL *nsurl = (__bridge NSURL *)fileURL;
 
@@ -985,7 +1431,7 @@ uint32_t dyld_array_count = 0;
 
     if([nsurl isFileURL] && [_hidejb isPathRestricted:[nsurl path] partial:NO]) {
         if(error) {
-            *error = (__bridge CFErrorRef) [HideJB generateFileNotFoundError];
+            *error = (__bridge CFErrorRef) _error_file_not_found;
         }
         
         return NULL;
@@ -999,7 +1445,7 @@ uint32_t dyld_array_count = 0;
 
     if([nsurl isFileURL] && [_hidejb isPathRestricted:[nsurl path] partial:NO]) {
         if(error) {
-            *error = (__bridge CFErrorRef) [HideJB generateFileNotFoundError];
+            *error = (__bridge CFErrorRef) _error_file_not_found;
         }
         
         return NULL;
@@ -1007,9 +1453,8 @@ uint32_t dyld_array_count = 0;
 
     return %orig;
 }
-*/
 %end
-
+*/
 %group hook_NSUtilities
 %hook UIImage
 - (instancetype)initWithContentsOfFile:(NSString *)path {
@@ -1065,7 +1510,7 @@ uint32_t dyld_array_count = 0;
 - (instancetype)initWithContentsOfFile:(NSString *)path options:(NSDataReadingOptions)readOptionsMask error:(NSError * _Nullable *)error {
     if([_hidejb isPathRestricted:path partial:NO]) {
         if(error) {
-            *error = [HideJB generateFileNotFoundError];
+            *error = _error_file_not_found;
         }
 
         return nil;
@@ -1077,7 +1522,7 @@ uint32_t dyld_array_count = 0;
 - (instancetype)initWithContentsOfURL:(NSURL *)url options:(NSDataReadingOptions)readOptionsMask error:(NSError * _Nullable *)error {
     if([_hidejb isURLRestricted:url partial:NO]) {
         if(error) {
-            *error = [HideJB generateFileNotFoundError];
+            *error = _error_file_not_found;
         }
         
         return nil;
@@ -1105,7 +1550,7 @@ uint32_t dyld_array_count = 0;
 + (instancetype)dataWithContentsOfFile:(NSString *)path options:(NSDataReadingOptions)readOptionsMask error:(NSError * _Nullable *)error {
     if([_hidejb isPathRestricted:path partial:NO]) {
         if(error) {
-            *error = [HideJB generateFileNotFoundError];
+            *error = _error_file_not_found;
         }
 
         return nil;
@@ -1117,7 +1562,7 @@ uint32_t dyld_array_count = 0;
 + (instancetype)dataWithContentsOfURL:(NSURL *)url options:(NSDataReadingOptions)readOptionsMask error:(NSError * _Nullable *)error {
     if([_hidejb isURLRestricted:url partial:NO]) {
         if(error) {
-            *error = [HideJB generateFileNotFoundError];
+            *error = _error_file_not_found;
         }
 
         return nil;
@@ -1127,7 +1572,6 @@ uint32_t dyld_array_count = 0;
 }
 %end
 */
-
 %hook NSMutableArray
 - (id)initWithContentsOfFile:(NSString *)path {
     if([_hidejb isPathRestricted:path partial:NO]) {
@@ -1226,7 +1670,7 @@ uint32_t dyld_array_count = 0;
 - (id)initWithContentsOfURL:(NSURL *)url error:(NSError * _Nullable *)error {
     if([_hidejb isURLRestricted:url partial:NO]) {
         if(error) {
-            *error = [HideJB generateFileNotFoundError];
+            *error = _error_file_not_found;
         }
 
         return nil;
@@ -1246,7 +1690,7 @@ uint32_t dyld_array_count = 0;
 + (id)dictionaryWithContentsOfURL:(NSURL *)url error:(NSError * _Nullable *)error {
     if([_hidejb isURLRestricted:url partial:NO]) {
         if(error) {
-            *error = [HideJB generateFileNotFoundError];
+            *error = _error_file_not_found;
         }
 
         return nil;
@@ -1268,7 +1712,7 @@ uint32_t dyld_array_count = 0;
 - (instancetype)initWithContentsOfFile:(NSString *)path encoding:(NSStringEncoding)enc error:(NSError * _Nullable *)error {
     if([_hidejb isPathRestricted:path partial:NO]) {
         if(error) {
-            *error = [HideJB generateFileNotFoundError];
+            *error = _error_file_not_found;
         }
 
         return nil;
@@ -1280,7 +1724,7 @@ uint32_t dyld_array_count = 0;
 - (instancetype)initWithContentsOfFile:(NSString *)path usedEncoding:(NSStringEncoding *)enc error:(NSError * _Nullable *)error {
     if([_hidejb isPathRestricted:path partial:NO]) {
         if(error) {
-            *error = [HideJB generateFileNotFoundError];
+            *error = _error_file_not_found;
         }
 
         return nil;
@@ -1292,7 +1736,7 @@ uint32_t dyld_array_count = 0;
 + (instancetype)stringWithContentsOfFile:(NSString *)path encoding:(NSStringEncoding)enc error:(NSError * _Nullable *)error {
     if([_hidejb isPathRestricted:path partial:NO]) {
         if(error) {
-            *error = [HideJB generateFileNotFoundError];
+            *error = _error_file_not_found;
         }
 
         return nil;
@@ -1304,7 +1748,7 @@ uint32_t dyld_array_count = 0;
 + (instancetype)stringWithContentsOfFile:(NSString *)path usedEncoding:(NSStringEncoding *)enc error:(NSError * _Nullable *)error {
     if([_hidejb isPathRestricted:path partial:NO]) {
         if(error) {
-            *error = [HideJB generateFileNotFoundError];
+            *error = _error_file_not_found;
         }
 
         return nil;
@@ -1317,10 +1761,6 @@ uint32_t dyld_array_count = 0;
 
 // Other Hooks
 %group hook_private
-// #include "Hooks/ApplePrivate.xm"
-#include <unistd.h>
-#include "Includes/codesign.h"
-
 %hookf(int, csops, pid_t pid, unsigned int ops, void *useraddr, size_t usersize) {
     int ret = %orig;
 
@@ -1334,11 +1774,6 @@ uint32_t dyld_array_count = 0;
 %end
 
 %group hook_debugging
-// #include "Hooks/Debugging.xm"
-#include <sys/sysctl.h>
-#include <unistd.h>
-#include <fcntl.h>
-
 %hookf(int, sysctl, int *name, u_int namelen, void *oldp, size_t *oldlenp, void *newp, size_t newlen) {
     if(namelen == 4
     && name[0] == CTL_KERN
@@ -1387,9 +1822,6 @@ uint32_t dyld_array_count = 0;
 %end
 
 %group hook_dyld_image
-// #include "Hooks/dyld.xm"
-#include <mach-o/dyld.h>
-
 %hookf(uint32_t, _dyld_image_count) {
     if(dyld_array_count > 0) {
         return dyld_array_count;
@@ -1400,6 +1832,10 @@ uint32_t dyld_array_count = 0;
 
 %hookf(const char *, _dyld_get_image_name, uint32_t image_index) {
     if(dyld_array_count > 0) {
+        // if(image_index == 0) {
+        //     updateDyldArray();
+        // }
+
         if(image_index >= dyld_array_count) {
             return NULL;
         }
@@ -1410,8 +1846,12 @@ uint32_t dyld_array_count = 0;
     // Basic filter.
     const char *ret = %orig(image_index);
 
-    if(ret && [_hidejb isImageRestricted:[NSString stringWithUTF8String:ret]]) {
-        return %orig(0);
+    if(ret) {
+        NSString *image_name = [[NSFileManager defaultManager] stringWithFileSystemRepresentation:ret length:strlen(ret)];
+
+        if([_hidejb isImageRestricted:image_name]) {
+            return "/.file";
+        }
     }
 
     return ret;
@@ -1447,7 +1887,7 @@ uint32_t dyld_array_count = 0;
 */
 %hookf(bool, dlopen_preflight, const char *path) {
     if(path) {
-        NSString *image_name = [NSString stringWithUTF8String:path];
+        NSString *image_name = [[NSFileManager defaultManager] stringWithFileSystemRepresentation:path length:strlen(path)];
 
         if([_hidejb isImageRestricted:image_name]) {
             NSLog(@"blocked dlopen_preflight: %@", image_name);
@@ -1458,7 +1898,7 @@ uint32_t dyld_array_count = 0;
     return %orig;
 }
 %end
-
+/*
 %group hook_dyld_advanced
 %hookf(int32_t, NSVersionOfRunTimeLibrary, const char *libraryName) {
     if(libraryName) {
@@ -1483,21 +1923,9 @@ uint32_t dyld_array_count = 0;
     
     return %orig;
 }
-/*
-%hookf(void, _dyld_register_func_for_add_image, void (*func)(const struct mach_header *mh, intptr_t vmaddr_slide)) {
-    %orig;
-}
-
-%hookf(void, _dyld_register_func_for_remove_image, void (*func)(const struct mach_header *mh, intptr_t vmaddr_slide)) {
-    %orig;
-}
-*/
 %end
-
+*/
 %group hook_dyld_dlsym
-// #include "Hooks/dlsym.xm"
-#include <dlfcn.h>
-
 %hookf(void *, dlsym, void *handle, const char *symbol) {
     if(symbol) {
         NSString *sym = [NSString stringWithUTF8String:symbol];
@@ -1519,10 +1947,6 @@ uint32_t dyld_array_count = 0;
 %end
 
 %group hook_sandbox
-// #include "Hooks/Sandbox.xm"
-#include <stdio.h>
-#include <unistd.h>
-
 %hook NSArray
 - (BOOL)writeToFile:(NSString *)path atomically:(BOOL)useAuxiliaryFile {
     if([_hidejb isPathRestricted:path partial:NO]) {
@@ -1553,7 +1977,7 @@ uint32_t dyld_array_count = 0;
 - (BOOL)writeToURL:(NSURL *)url error:(NSError * _Nullable *)error {
     if([_hidejb isURLRestricted:url partial:NO]) {
         if(error) {
-            *error = [HideJB generateFileNotFoundError];
+            *error = _error_file_not_found;
         }
 
         return NO;
@@ -1583,7 +2007,7 @@ uint32_t dyld_array_count = 0;
 - (BOOL)writeToFile:(NSString *)path options:(NSDataWritingOptions)writeOptionsMask error:(NSError * _Nullable *)error {
     if([_hidejb isPathRestricted:path partial:NO]) {
         if(error) {
-            *error = [HideJB generateFileNotFoundError];
+            *error = _error_file_not_found;
         }
 
         return NO;
@@ -1603,7 +2027,7 @@ uint32_t dyld_array_count = 0;
 - (BOOL)writeToURL:(NSURL *)url options:(NSDataWritingOptions)writeOptionsMask error:(NSError * _Nullable *)error {
     if([_hidejb isURLRestricted:url partial:NO]) {
         if(error) {
-            *error = [HideJB generateFileNotFoundError];
+            *error = _error_file_not_found;
         }
 
         return NO;
@@ -1617,7 +2041,7 @@ uint32_t dyld_array_count = 0;
 - (BOOL)writeToFile:(NSString *)path atomically:(BOOL)useAuxiliaryFile encoding:(NSStringEncoding)enc error:(NSError * _Nullable *)error {
     if([_hidejb isPathRestricted:path partial:NO]) {
         if(error) {
-            *error = [HideJB generateFileNotFoundError];
+            *error = _error_file_not_found;
         }
 
         return NO;
@@ -1629,7 +2053,7 @@ uint32_t dyld_array_count = 0;
 - (BOOL)writeToURL:(NSURL *)url atomically:(BOOL)useAuxiliaryFile encoding:(NSStringEncoding)enc error:(NSError * _Nullable *)error {
     if([_hidejb isURLRestricted:url partial:NO]) {
         if(error) {
-            *error = [HideJB generateFileNotFoundError];
+            *error = _error_file_not_found;
         }
 
         return NO;
@@ -1643,7 +2067,7 @@ uint32_t dyld_array_count = 0;
 - (BOOL)createDirectoryAtURL:(NSURL *)url withIntermediateDirectories:(BOOL)createIntermediates attributes:(NSDictionary<NSFileAttributeKey, id> *)attributes error:(NSError * _Nullable *)error {
     if([_hidejb isURLRestricted:url partial:NO]) {
         if(error) {
-            *error = [HideJB generateFileNotFoundError];
+            *error = _error_file_not_found;
         }
 
         return NO;
@@ -1655,7 +2079,7 @@ uint32_t dyld_array_count = 0;
 - (BOOL)createDirectoryAtPath:(NSString *)path withIntermediateDirectories:(BOOL)createIntermediates attributes:(NSDictionary<NSFileAttributeKey, id> *)attributes error:(NSError * _Nullable *)error {
     if([_hidejb isPathRestricted:path partial:NO]) {
         if(error) {
-            *error = [HideJB generateFileNotFoundError];
+            *error = _error_file_not_found;
         }
 
         return NO;
@@ -1671,11 +2095,49 @@ uint32_t dyld_array_count = 0;
 
     return %orig;
 }
+
+- (BOOL)removeItemAtURL:(NSURL *)URL error:(NSError * _Nullable *)error {
+    if([_hidejb isURLRestricted:URL manager:self]) {
+        if(error) {
+            *error = _error_file_not_found;
+        }
+
+        return NO;
+    }
+
+    return %orig;
+}
+
+- (BOOL)removeItemAtPath:(NSString *)path error:(NSError * _Nullable *)error {
+    if([_hidejb isPathRestricted:path manager:self]) {
+        if(error) {
+            *error = _error_file_not_found;
+        }
+
+        return NO;
+    }
+
+    return %orig;
+}
+
+- (BOOL)trashItemAtURL:(NSURL *)url resultingItemURL:(NSURL * _Nullable *)outResultingURL error:(NSError * _Nullable *)error {
+    if([_hidejb isURLRestricted:url manager:self]) {
+        if(error) {
+            *error = _error_file_not_found;
+        }
+
+        return NO;
+    }
+
+    return %orig;
+}
 %end
 
 %hookf(int, creat, const char *pathname, mode_t mode) {
     if(pathname) {
-        if([_hidejb isPathRestricted:[NSString stringWithUTF8String:pathname]]) {
+        NSString *path = [[NSFileManager defaultManager] stringWithFileSystemRepresentation:pathname length:strlen(pathname)];
+
+        if([_hidejb isPathRestricted:path]) {
             errno = EACCES;
             return -1;
         }
@@ -1780,14 +2242,53 @@ uint32_t dyld_array_count = 0;
 }
 %end
 
+%group hook_runtime
+%hookf(const char * _Nonnull *, objc_copyImageNames, unsigned int *outCount) {
+    const char * _Nonnull *ret = %orig;
+
+    if(ret && outCount) {
+        NSLog(@"copyImageNames: %d", *outCount);
+
+        const char *exec_name = _dyld_get_image_name(0);
+        unsigned int i;
+
+        for(i = 0; i < *outCount; i++) {
+            if(strcmp(ret[i], exec_name) == 0) {
+                // Stop after app executable.
+                *outCount = (i + 1);
+                break;
+            }
+        }
+    }
+
+    return ret;
+}
+
+%hookf(const char * _Nonnull *, objc_copyClassNamesForImage, const char *image, unsigned int *outCount) {
+    if(image) {
+        NSLog(@"copyClassNamesForImage: %s", image);
+
+        NSString *image_ns = [NSString stringWithUTF8String:image];
+
+        if([_hidejb isImageRestricted:image_ns]) {
+            *outCount = 0;
+            return NULL;
+        }
+    }
+
+    return %orig;
+}
+%end
+
 %group hook_libraries
-%hook AppDelegate
+
+%hook MTAAppDelegate
 - (void)applicationDidBecomeActive:(id)arg1 {
 } 
 %end
 
-%hook CDVViewController
-- (void)onAppDidBecomeActive:(id)arg1 {
+%hook AppDelegate
+- (void)applicationDidBecomeActive:(id)arg1 {
 } 
 %end
 
@@ -1805,14 +2306,11 @@ uint32_t dyld_array_count = 0;
 }
 %end
 
-// %hook SFAntiPiracy
-// + (int)isJailbroken {
-// 	// Probably should not hook with a hard coded value.
-// 	// This value may be changed by developers using this library.
-// 	// Best to defeat the checks rather than skip them.
-// 	return 4783242;
-// }
-// %end
+%hook SFAntiPiracy
++ (int)isJailbroken {
+ return 4783242;
+}
+%end
 
 %hook JailbreakDetectionVC
 - (BOOL)isJailbroken {
@@ -1924,6 +2422,26 @@ uint32_t dyld_array_count = 0;
 - (bool)isJailBrokenDetectedByVOS {
     return false;
 }
+
+- (bool)isDFPHookedDetecedByVOS {
+    return false;
+}
+
+- (bool)isCodeInjectionDetectedByVOS {
+    return false;
+}
+
+- (bool)isDebuggerCheckDetectedByVOS {
+    return false;
+}
+
+- (bool)isAppSignerCheckDetectedByVOS {
+    return false;
+}
+
+- (bool)v_checkAModified {
+    return false;
+}
 %end
 
 %hook SDMUtils
@@ -1935,6 +2453,18 @@ uint32_t dyld_array_count = 0;
 %hook OneSignalJailbreakDetection
 + (BOOL)isJailbroken {
     return NO;
+}
+%end
+
+%hook DigiPassHandler
+- (BOOL)rootedDeviceTestResult {
+    return NO;
+}
+%end
+
+%hook AWMyDeviceGeneralInfo
+- (bool)isCompliant {
+    return true;
 }
 %end
 %end
@@ -2095,7 +2625,8 @@ void init_path_map(HideJB *hidejb) {
     [hidejb addPath:@"/Library/Wallpaper" restricted:NO];
     
     // Restrict /tmp
-    [hidejb addPath:@"/tmp" restricted:NO];
+    [hidejb addPath:@"/tmp" restricted:YES hidden:NO];
+    [hidejb addPath:@"/tmp/com.apple" restricted:NO];
     [hidejb addPath:@"/tmp/substrate" restricted:YES];
     [hidejb addPath:@"/tmp/Substrate" restricted:YES];
     [hidejb addPath:@"/tmp/cydia.log" restricted:YES];
@@ -2103,6 +2634,8 @@ void init_path_map(HideJB *hidejb) {
     [hidejb addPath:@"/tmp/slide.txt" restricted:YES];
     [hidejb addPath:@"/tmp/amfidebilitate.out" restricted:YES];
     [hidejb addPath:@"/tmp/org.coolstar" restricted:YES];
+    [hidejb addPath:@"/tmp/amfid_payload.alive" restricted:YES];
+    [hidejb addPath:@"/tmp/jailbreakd.pid" restricted:YES];
 
     // Restrict /var by whitelisting
     [hidejb addPath:@"/var" restricted:YES hidden:NO];
@@ -2244,58 +2777,73 @@ void init_path_map(HideJB *hidejb) {
     [hidejb addPath:@"/usr/bin/taskinfo" restricted:NO];
     [hidejb addPath:@"/usr/bin/vm_stat" restricted:NO];
     [hidejb addPath:@"/usr/bin/zprint" restricted:NO];
-    [hidejb addPath:@"/usr/lib" restricted:YES hidden:NO];
-    [hidejb addPath:@"/usr/lib/FDRSealingMap.plist" restricted:NO];
-    [hidejb addPath:@"/usr/lib/bbmasks" restricted:NO];
-    [hidejb addPath:@"/usr/lib/dyld" restricted:NO];
-    [hidejb addPath:@"/usr/lib/libCRFSuite" restricted:NO];
-    [hidejb addPath:@"/usr/lib/libDHCPServer" restricted:NO];
-    [hidejb addPath:@"/usr/lib/libMatch" restricted:NO];
-    [hidejb addPath:@"/usr/lib/libSystem" restricted:NO];
-    [hidejb addPath:@"/usr/lib/libarchive" restricted:NO];
-    [hidejb addPath:@"/usr/lib/libbsm" restricted:NO];
-    [hidejb addPath:@"/usr/lib/libbz2" restricted:NO];
-    [hidejb addPath:@"/usr/lib/libc++" restricted:NO];
-    [hidejb addPath:@"/usr/lib/libc" restricted:NO];
-    [hidejb addPath:@"/usr/lib/libcharset" restricted:NO];
-    [hidejb addPath:@"/usr/lib/libcurses" restricted:NO];
-    [hidejb addPath:@"/usr/lib/libdbm" restricted:NO];
-    [hidejb addPath:@"/usr/lib/libdl" restricted:NO];
-    [hidejb addPath:@"/usr/lib/libeasyperf" restricted:NO];
-    [hidejb addPath:@"/usr/lib/libedit" restricted:NO];
-    [hidejb addPath:@"/usr/lib/libexslt" restricted:NO];
-    [hidejb addPath:@"/usr/lib/libextension" restricted:NO];
-    [hidejb addPath:@"/usr/lib/libform" restricted:NO];
-    [hidejb addPath:@"/usr/lib/libiconv" restricted:NO];
-    [hidejb addPath:@"/usr/lib/libicucore" restricted:NO];
-    [hidejb addPath:@"/usr/lib/libinfo" restricted:NO];
-    [hidejb addPath:@"/usr/lib/libipsec" restricted:NO];
-    [hidejb addPath:@"/usr/lib/liblzma" restricted:NO];
-    [hidejb addPath:@"/usr/lib/libm" restricted:NO];
-    [hidejb addPath:@"/usr/lib/libmecab" restricted:NO];
-    [hidejb addPath:@"/usr/lib/libncurses" restricted:NO];
-    [hidejb addPath:@"/usr/lib/libobjc" restricted:NO];
-    [hidejb addPath:@"/usr/lib/libpcap" restricted:NO];
-    [hidejb addPath:@"/usr/lib/libpmsample" restricted:NO];
-    [hidejb addPath:@"/usr/lib/libpoll" restricted:NO];
-    [hidejb addPath:@"/usr/lib/libproc" restricted:NO];
-    [hidejb addPath:@"/usr/lib/libpthread" restricted:NO];
-    [hidejb addPath:@"/usr/lib/libresolv" restricted:NO];
-    [hidejb addPath:@"/usr/lib/librpcsvc" restricted:NO];
-    [hidejb addPath:@"/usr/lib/libsandbox" restricted:NO];
-    [hidejb addPath:@"/usr/lib/libsqlite3" restricted:NO];
-    [hidejb addPath:@"/usr/lib/libstdc++" restricted:NO];
-    [hidejb addPath:@"/usr/lib/libtidy" restricted:NO];
-    [hidejb addPath:@"/usr/lib/libutil" restricted:NO];
-    [hidejb addPath:@"/usr/lib/libxml2" restricted:NO];
-    [hidejb addPath:@"/usr/lib/libxslt" restricted:NO];
-    [hidejb addPath:@"/usr/lib/libz" restricted:NO];
-    [hidejb addPath:@"/usr/lib/libperfcheck" restricted:NO];
-    [hidejb addPath:@"/usr/lib/libedit" restricted:NO];
-    [hidejb addPath:@"/usr/lib/log" restricted:NO];
-    [hidejb addPath:@"/usr/lib/system" restricted:NO];
-    [hidejb addPath:@"/usr/lib/updaters" restricted:NO];
-    [hidejb addPath:@"/usr/lib/xpc" restricted:NO];
+
+    if([hidejb useTweakCompatibilityMode]) {
+        [hidejb addPath:@"/usr/lib" restricted:NO];
+        [hidejb addPath:@"/usr/lib/libsubstrate" restricted:YES];
+        [hidejb addPath:@"/usr/lib/libsubstitute" restricted:YES];
+        [hidejb addPath:@"/usr/lib/libSubstitrate" restricted:YES];
+        [hidejb addPath:@"/usr/lib/TweakInject" restricted:YES];
+        [hidejb addPath:@"/usr/lib/substrate" restricted:YES];
+        [hidejb addPath:@"/usr/lib/tweaks" restricted:YES];
+        [hidejb addPath:@"/usr/lib/apt" restricted:YES];
+        [hidejb addPath:@"/usr/lib/bash" restricted:YES];
+        [hidejb addPath:@"/usr/lib/cycript" restricted:YES];
+    } else {
+        [hidejb addPath:@"/usr/lib" restricted:YES hidden:NO];
+        [hidejb addPath:@"/usr/lib/FDRSealingMap.plist" restricted:NO];
+        [hidejb addPath:@"/usr/lib/bbmasks" restricted:NO];
+        [hidejb addPath:@"/usr/lib/dyld" restricted:NO];
+        [hidejb addPath:@"/usr/lib/libCRFSuite" restricted:NO];
+        [hidejb addPath:@"/usr/lib/libDHCPServer" restricted:NO];
+        [hidejb addPath:@"/usr/lib/libMatch" restricted:NO];
+        [hidejb addPath:@"/usr/lib/libSystem" restricted:NO];
+        [hidejb addPath:@"/usr/lib/libarchive" restricted:NO];
+        [hidejb addPath:@"/usr/lib/libbsm" restricted:NO];
+        [hidejb addPath:@"/usr/lib/libbz2" restricted:NO];
+        [hidejb addPath:@"/usr/lib/libc++" restricted:NO];
+        [hidejb addPath:@"/usr/lib/libc" restricted:NO];
+        [hidejb addPath:@"/usr/lib/libcharset" restricted:NO];
+        [hidejb addPath:@"/usr/lib/libcurses" restricted:NO];
+        [hidejb addPath:@"/usr/lib/libdbm" restricted:NO];
+        [hidejb addPath:@"/usr/lib/libdl" restricted:NO];
+        [hidejb addPath:@"/usr/lib/libeasyperf" restricted:NO];
+        [hidejb addPath:@"/usr/lib/libedit" restricted:NO];
+        [hidejb addPath:@"/usr/lib/libexslt" restricted:NO];
+        [hidejb addPath:@"/usr/lib/libextension" restricted:NO];
+        [hidejb addPath:@"/usr/lib/libform" restricted:NO];
+        [hidejb addPath:@"/usr/lib/libiconv" restricted:NO];
+        [hidejb addPath:@"/usr/lib/libicucore" restricted:NO];
+        [hidejb addPath:@"/usr/lib/libinfo" restricted:NO];
+        [hidejb addPath:@"/usr/lib/libipsec" restricted:NO];
+        [hidejb addPath:@"/usr/lib/liblzma" restricted:NO];
+        [hidejb addPath:@"/usr/lib/libm" restricted:NO];
+        [hidejb addPath:@"/usr/lib/libmecab" restricted:NO];
+        [hidejb addPath:@"/usr/lib/libncurses" restricted:NO];
+        [hidejb addPath:@"/usr/lib/libobjc" restricted:NO];
+        [hidejb addPath:@"/usr/lib/libpcap" restricted:NO];
+        [hidejb addPath:@"/usr/lib/libpmsample" restricted:NO];
+        [hidejb addPath:@"/usr/lib/libpoll" restricted:NO];
+        [hidejb addPath:@"/usr/lib/libproc" restricted:NO];
+        [hidejb addPath:@"/usr/lib/libpthread" restricted:NO];
+        [hidejb addPath:@"/usr/lib/libresolv" restricted:NO];
+        [hidejb addPath:@"/usr/lib/librpcsvc" restricted:NO];
+        [hidejb addPath:@"/usr/lib/libsandbox" restricted:NO];
+        [hidejb addPath:@"/usr/lib/libsqlite3" restricted:NO];
+        [hidejb addPath:@"/usr/lib/libstdc++" restricted:NO];
+        [hidejb addPath:@"/usr/lib/libtidy" restricted:NO];
+        [hidejb addPath:@"/usr/lib/libutil" restricted:NO];
+        [hidejb addPath:@"/usr/lib/libxml2" restricted:NO];
+        [hidejb addPath:@"/usr/lib/libxslt" restricted:NO];
+        [hidejb addPath:@"/usr/lib/libz" restricted:NO];
+        [hidejb addPath:@"/usr/lib/libperfcheck" restricted:NO];
+        [hidejb addPath:@"/usr/lib/libedit" restricted:NO];
+        [hidejb addPath:@"/usr/lib/log" restricted:NO];
+        [hidejb addPath:@"/usr/lib/system" restricted:NO];
+        [hidejb addPath:@"/usr/lib/updaters" restricted:NO];
+        [hidejb addPath:@"/usr/lib/xpc" restricted:NO];
+    }
+    
     [hidejb addPath:@"/usr/libexec" restricted:YES hidden:NO];
     [hidejb addPath:@"/usr/libexec/BackupAgent" restricted:NO];
     [hidejb addPath:@"/usr/libexec/BackupAgent2" restricted:NO];
@@ -2532,7 +3080,9 @@ static int hook_open(const char *path, int oflag, ...) {
     int result = 0;
 
     if(path) {
-        if([_hidejb isPathRestricted:[NSString stringWithUTF8String:path]]) {
+        NSString *pathname = [[NSFileManager defaultManager] stringWithFileSystemRepresentation:path length:strlen(path)];
+
+        if([_hidejb isPathRestricted:pathname]) {
             errno = ((oflag & O_CREAT) == O_CREAT) ? EACCES : ENOENT;
             return -1;
         }
@@ -2559,14 +3109,14 @@ static int hook_openat(int fd, const char *path, int oflag, ...) {
     int result = 0;
 
     if(path) {
-        NSString *nspath = [NSString stringWithUTF8String:path];
+        NSString *nspath = [[NSFileManager defaultManager] stringWithFileSystemRepresentation:path length:strlen(path)];
 
         if(![nspath isAbsolutePath]) {
             // Get path of dirfd.
             char dirfdpath[PATH_MAX];
         
             if(fcntl(fd, F_GETPATH, dirfdpath) != -1) {
-                NSString *dirfd_path = [NSString stringWithUTF8String:dirfdpath];
+                NSString *dirfd_path = [[NSFileManager defaultManager] stringWithFileSystemRepresentation:dirfdpath length:strlen(dirfdpath)];
                 nspath = [dirfd_path stringByAppendingPathComponent:nspath];
             }
         }
@@ -2596,7 +3146,9 @@ static int hook_openat(int fd, const char *path, int oflag, ...) {
 static DIR *(*orig_opendir)(const char *filename);
 static DIR *hook_opendir(const char *filename) {
     if(filename) {
-        if([_hidejb isPathRestricted:[NSString stringWithUTF8String:filename]]) {
+        NSString *path = [[NSFileManager defaultManager] stringWithFileSystemRepresentation:filename length:strlen(filename)];
+
+        if([_hidejb isPathRestricted:path]) {
             errno = ENOENT;
             return NULL;
         }
@@ -2616,7 +3168,7 @@ static struct dirent *hook_readdir(DIR *dirp) {
     char dirfdpath[PATH_MAX];
 
     if(fcntl(fd, F_GETPATH, dirfdpath) != -1) {
-        dirfd_path = [NSString stringWithUTF8String:dirfdpath];
+        dirfd_path = [[NSFileManager defaultManager] stringWithFileSystemRepresentation:dirfdpath length:strlen(dirfdpath)];
     } else {
         return orig_readdir(dirp);
     }
@@ -2635,14 +3187,12 @@ static struct dirent *hook_readdir(DIR *dirp) {
     return ret;
 }
 
-#include <dlfcn.h>
-
 static int (*orig_dladdr)(const void *addr, Dl_info *info);
 static int hook_dladdr(const void *addr, Dl_info *info) {
     int ret = orig_dladdr(addr, info);
 
-    if(ret) {
-        NSString *path = [NSString stringWithUTF8String:info->dli_fname];
+    if(!passthrough && ret) {
+        NSString *path = [[NSFileManager defaultManager] stringWithFileSystemRepresentation:info->dli_fname length:strlen(info->dli_fname)];
 
         if([_hidejb isImageRestricted:path]) {
             return 0;
@@ -2658,7 +3208,7 @@ static ssize_t hook_readlink(const char *path, char *buf, size_t bufsiz) {
         return orig_readlink(path, buf, bufsiz);
     }
 
-    NSString *nspath = [NSString stringWithUTF8String:path];
+    NSString *nspath = [[NSFileManager defaultManager] stringWithFileSystemRepresentation:path length:strlen(path)];
 
     if([_hidejb isPathRestricted:nspath]) {
         errno = ENOENT;
@@ -2671,7 +3221,7 @@ static ssize_t hook_readlink(const char *path, char *buf, size_t bufsiz) {
         buf[ret] = '\0';
 
         // Track this symlink in HideJB
-        [_hidejb addLinkFromPath:nspath toPath:[NSString stringWithUTF8String:buf]];
+        [_hidejb addLinkFromPath:nspath toPath:[[NSFileManager defaultManager] stringWithFileSystemRepresentation:buf length:strlen(buf)]];
     }
 
     return ret;
@@ -2683,14 +3233,14 @@ static ssize_t hook_readlinkat(int fd, const char *path, char *buf, size_t bufsi
         return orig_readlinkat(fd, path, buf, bufsiz);
     }
 
-    NSString *nspath = [NSString stringWithUTF8String:path];
+    NSString *nspath = [[NSFileManager defaultManager] stringWithFileSystemRepresentation:path length:strlen(path)];
 
     if(![nspath isAbsolutePath]) {
         // Get path of dirfd.
         char dirfdpath[PATH_MAX];
     
         if(fcntl(fd, F_GETPATH, dirfdpath) != -1) {
-            NSString *dirfd_path = [NSString stringWithUTF8String:dirfdpath];
+            NSString *dirfd_path = [[NSFileManager defaultManager] stringWithFileSystemRepresentation:dirfdpath length:strlen(dirfdpath)];
             nspath = [dirfd_path stringByAppendingPathComponent:nspath];
         }
     }
@@ -2706,18 +3256,10 @@ static ssize_t hook_readlinkat(int fd, const char *path, char *buf, size_t bufsi
         buf[ret] = '\0';
 
         // Track this symlink in HideJB
-        [_hidejb addLinkFromPath:nspath toPath:[NSString stringWithUTF8String:buf]];
+        [_hidejb addLinkFromPath:nspath toPath:[[NSFileManager defaultManager] stringWithFileSystemRepresentation:buf length:strlen(buf)]];
     }
 
     return ret;
-}
-
-void updateDyldArray(void) {
-    dyld_array_count = 0;
-    dyld_array = [_hidejb generateDyldArray];
-    dyld_array_count = (uint32_t) [dyld_array count];
-
-    NSLog(@"generated dyld array (%d items)", dyld_array_count);
 }
 
 %group hook_springboard
@@ -2725,34 +3267,13 @@ void updateDyldArray(void) {
 - (void)applicationDidFinishLaunching:(UIApplication *)application {
     %orig;
 
-    if(![[NSFileManager defaultManager] fileExistsAtPath:@"/var/lib/dpkg/info/com.thuthuatjb.hidejb.md5sums"]) {
-        // Tweak was not installed properly. Notify the user.
-        UIAlertController *alert = [UIAlertController alertControllerWithTitle:@"Thank for install" message:@"Có vẻ như bạn đã tải về HideJB không phải từ TTJB Repo. Các tweak được cung cấp bởi chúng tôi đã được kiểm duyệt kĩ để đảm bảo tính tương thích và không chứa phần mềm độc hại. Hãy gỡ bỏ và tải về nó từ nguồn của TTJB\n It looks like you downloaded HideJB not from TTJB Repo. The tweaks provided by us have been moderated to ensure compatibility and contain no malware. Please remove and download it from TTJB Source\nThank!" preferredStyle:UIAlertControllerStyleAlert];
-        UIAlertAction *action = [UIAlertAction actionWithTitle:@"repo.thuthuatjb.com" style:UIAlertActionStyleDefault handler:nil];
+    HBPreferences *prefs = [HBPreferences preferencesForIdentifier:BLACKLIST_PATH];
 
-        [alert addAction:action];
-        [[[application keyWindow] rootViewController] presentViewController:alert animated:YES completion:nil];
-    }
+    NSArray *file_map = [HideJB generateFileMap];
+    NSArray *url_set = [HideJB generateSchemeArray];
 
-    HBPreferences *prefs = [HBPreferences preferencesForIdentifier:PREFS_TWEAK_ID];
-
-    [prefs registerDefaults:@{
-        @"enabled_hidejb" : @YES,
-        @"mode" : @"blacklist",
-        @"enabled_bypass_checks" : @YES,
-        @"enabled_exclude_safe_apps" : @YES,
-        @"enabled_auto_scan_file_map" : @YES
-    }];
-
-    if([prefs boolForKey:@"enabled_auto_scan_file_map"]) {
-        HBPreferences *prefs = [HBPreferences preferencesForIdentifier:BLACKLIST_PATH];
-
-        NSArray *file_map = [HideJB generateFileMap];
-        NSArray *url_set = [HideJB generateSchemeArray];
-
-        [prefs setObject:file_map forKey:@"files"];
-        [prefs setObject:url_set forKey:@"schemes"];
-    }
+    [prefs setObject:file_map forKey:@"files"];
+    [prefs setObject:url_set forKey:@"schemes"];
 }
 %end
 %end
@@ -2761,7 +3282,12 @@ void updateDyldArray(void) {
     NSString *processName = [[NSProcessInfo processInfo] processName];
 
     if([processName isEqualToString:@"SpringBoard"]) {
-        %init(hook_springboard);
+        HBPreferences *prefs = [HBPreferences preferencesForIdentifier:PREFS_TWEAK_ID];
+
+        if(prefs && [prefs boolForKey:@"enabled_auto_scan_file_map"]) {
+            %init(hook_springboard);
+        }
+
         return;
     }
 
@@ -2772,23 +3298,20 @@ void updateDyldArray(void) {
         NSString *bundleIdentifier = [bundle bundleIdentifier];
 
         // User (Sandboxed) Applications
-        if([executablePath hasPrefix:@"/var/containers/Bundle/Application"]) {
+        if([executablePath hasPrefix:@"/var/containers/Bundle/Application"]
+        || [executablePath hasPrefix:@"/private/var/containers/Bundle/Application"]
+        || [executablePath hasPrefix:@"/var/mobile/Containers/Bundle/Application"]
+        || [executablePath hasPrefix:@"/private/var/mobile/Containers/Bundle/Application"]) {
             NSLog(@"bundleIdentifier: %@", bundleIdentifier);
 
-            HBPreferences *prefs_blacklist = [HBPreferences preferencesForIdentifier:BLACKLIST_PATH];
-            HBPreferences *prefs_tweakcompat = [HBPreferences preferencesForIdentifier:TWEAKCOMPAT_PATH];
-            HBPreferences *prefs_injectcompat = [HBPreferences preferencesForIdentifier:INJECTCOMPAT_PATH];
-            HBPreferences *prefs_lockdown = [HBPreferences preferencesForIdentifier:LOCKDOWN_PATH];
-            HBPreferences *prefs_dlfcn = [HBPreferences preferencesForIdentifier:DLFCN_PATH];
-            HBPreferences *prefs_apps = [HBPreferences preferencesForIdentifier:APPS_PATH];
             HBPreferences *prefs = [HBPreferences preferencesForIdentifier:PREFS_TWEAK_ID];
 
             [prefs registerDefaults:@{
                 @"enabled_hidejb" : @YES,
                 @"mode" : @"whitelist",
-                @"enabled_bypass_checks" : @YES,
+                @"enabled_bypass_plus" : @YES,
                 @"enabled_exclude_safe_apps" : @YES,
-                @"enabled_auto_scan_file_map" : @YES
+                @"enabled_dyld_hooks" : @YES
             }];
             
             // Check if HideJB is enabled
@@ -2806,7 +3329,7 @@ void updateDyldArray(void) {
                     @"science.xnu.undecimus", // unc0ver
                     @"com.electrateam.chimera", // Chimera
                     @"org.coolstar.electra", // Electra
-                    @"us.diatr.undecimus" // unc0ver dark				
+                    @"us.diatr.undecimus" // unc0ver dark
                 ];
 
                 for(NSString *bundle_id in excluded_bundleids) {
@@ -2815,6 +3338,8 @@ void updateDyldArray(void) {
                     }
                 }
             }
+
+            HBPreferences *prefs_apps = [HBPreferences preferencesForIdentifier:APPS_PATH];
 
             // Check if excluded bundleIdentifier
             NSString *mode = [prefs objectForKey:@"mode"];
@@ -2831,12 +3356,62 @@ void updateDyldArray(void) {
                 }
             }
 
+            HBPreferences *prefs_blacklist = [HBPreferences preferencesForIdentifier:BLACKLIST_PATH];
+            HBPreferences *prefs_tweakcompat = [HBPreferences preferencesForIdentifier:TWEAKCOMPAT_PATH];
+            HBPreferences *prefs_lockdown = [HBPreferences preferencesForIdentifier:LOCKDOWN_PATH];
+            HBPreferences *prefs_dlfcn = [HBPreferences preferencesForIdentifier:DLFCN_PATH];
+
             // Initialize HideJB
             _hidejb = [HideJB new];
 
             if(!_hidejb) {
                 NSLog(@"failed to initialize HideJB");
                 return;
+            }
+
+            // Compatibility mode
+            [_hidejb setUseTweakCompatibilityMode:[prefs_tweakcompat boolForKey:bundleIdentifier] ? NO : YES];
+
+            // Disable inject compatibility if we are using Substitute.
+            BOOL isSubstitute = [[NSFileManager defaultManager] fileExistsAtPath:@"/usr/lib/libsubstitute.dylib"];
+
+            if(isSubstitute) {
+                [_hidejb setUseInjectCompatibilityMode:NO];
+                NSLog(@"detected Substitute");
+            } else {
+                [_hidejb setUseInjectCompatibilityMode:YES];
+                NSLog(@"detected Substrate");
+            }
+
+            // Lockdown mode
+            if([prefs_lockdown boolForKey:bundleIdentifier]) {
+                %init(hook_libc_inject);
+                %init(hook_dlopen_inject);
+
+                MSHookFunction((void *) open, (void *) hook_open, (void **) &orig_open);
+                MSHookFunction((void *) openat, (void *) hook_openat, (void **) &orig_openat);
+
+                [_hidejb setUseInjectCompatibilityMode:NO];
+                [_hidejb setUseTweakCompatibilityMode:NO];
+
+                _dyld_register_func_for_add_image(dyld_image_added);
+
+                NSLog(@"enabled lockdown mode");
+            }
+
+            if([_hidejb useInjectCompatibilityMode]) {
+                NSLog(@"using injection compatibility mode");
+            } else {
+                // Substitute doesn't like hooking opendir :(
+                if(!isSubstitute) {
+                    MSHookFunction((void *) opendir, (void *) hook_opendir, (void **) &orig_opendir);
+                }
+
+                MSHookFunction((void *) readdir, (void *) hook_readdir, (void **) &orig_readdir);
+            }
+
+            if([_hidejb useTweakCompatibilityMode]) {
+                NSLog(@"using tweak compatibility mode");
             }
 
             // Initialize restricted path map
@@ -2859,53 +3434,14 @@ void updateDyldArray(void) {
                 NSLog(@"initialized url set (%lu items)", (unsigned long) [url_set count]);
             }
 
-            // Compatibility mode
-            [_hidejb setUseTweakCompatibilityMode:[prefs_tweakcompat boolForKey:bundleIdentifier] ? NO : YES];
-            [_hidejb setUseInjectCompatibilityMode:[prefs_injectcompat boolForKey:bundleIdentifier] ? NO : YES];
-
-            // Disable inject compatibility if we are using Substitute.
-            BOOL isSubstitute = [[NSFileManager defaultManager] fileExistsAtPath:@"/usr/lib/libsubstitute.dylib"];
-
-            if(isSubstitute) {
-                [_hidejb setUseInjectCompatibilityMode:NO];
-            }
-
-            // Lockdown mode
-            if([prefs_lockdown boolForKey:bundleIdentifier]) {
-                %init(hook_libc_inject);
-                %init(hook_dlopen_inject);
-
-                MSHookFunction((void *) open, (void *) hook_open, (void **) &orig_open);
-                MSHookFunction((void *) openat, (void *) hook_openat, (void **) &orig_openat);
-
-                [_hidejb setUseInjectCompatibilityMode:NO];
-                [_hidejb setUseTweakCompatibilityMode:NO];
-
-                NSLog(@"enabled lockdown mode");
-            }
-
-            if([_hidejb useInjectCompatibilityMode]) {
-                NSLog(@"using injection compatibility mode");
-            } else {
-                // Substitute doesn't like hooking opendir :(
-                if(!isSubstitute) {
-                    MSHookFunction((void *) opendir, (void *) hook_opendir, (void **) &orig_opendir);
-                }
-
-                MSHookFunction((void *) readdir, (void *) hook_readdir, (void **) &orig_readdir);
-            }
-
-            if([_hidejb useTweakCompatibilityMode]) {
-                NSLog(@"using tweak compatibility mode");
-            }
-
             // Initialize stable hooks
             %init(hook_private);
+            %init(hook_NSFileManager);
+            %init(hook_NSFileWrapper);
+            %init(hook_NSFileVersion);
             %init(hook_libc);
             %init(hook_debugging);
-
             %init(hook_NSFileHandle);
-            %init(hook_NSFileManager);
             %init(hook_NSURL);
             %init(hook_UIApplication);
             %init(hook_NSBundle);
@@ -2918,31 +3454,32 @@ void updateDyldArray(void) {
             NSLog(@"hooked bypass methods");
 
             // Initialize other hooks
-            if([prefs boolForKey:@"enabled_bypass_checks"]) {
+            if([prefs boolForKey:@"enabled_bypass_plus"]) {
                 %init(hook_libraries);
 
                 NSLog(@"hooked detection libraries");
             }
 
-            if([prefs boolForKey:@"enabled_dyld_hooks"] || [prefs_lockdown boolForKey:bundleIdentifier]) {
+            if([prefs boolForKey:@"enabled_dyld_hooks"]) {
                 %init(hook_dyld_image);
+                MSHookFunction((void *) dladdr, (void *) hook_dladdr, (void **) &orig_dladdr);
 
                 NSLog(@"filtering dynamic libraries");
             }
 
-            if([prefs boolForKey:@"enabled_lock_sandbox"] || [prefs_lockdown boolForKey:bundleIdentifier]) {
+            if([prefs boolForKey:@"enabled_lock_sandbox"]) {
                 %init(hook_sandbox);
 
                 NSLog(@"hooked sandbox methods");
             }
 
             // Generate filtered dyld array
-            if([prefs boolForKey:@"enabled_dyld_filter"] || [prefs_lockdown boolForKey:bundleIdentifier]) {
+            if([prefs boolForKey:@"enabled_dyld_filter"]) {
                 updateDyldArray();
 
-                %init(hook_dyld_advanced);
-                %init(hook_CoreFoundation);
-                MSHookFunction((void *) dladdr, (void *) hook_dladdr, (void **) &orig_dladdr);
+                // %init(hook_dyld_advanced);
+                // %init(hook_CoreFoundation);
+                %init(hook_runtime);
 
                 NSLog(@"enabled advanced dynamic library filtering");
             }
@@ -2952,6 +3489,9 @@ void updateDyldArray(void) {
 
                 NSLog(@"hooked dynamic linker methods");
             }
+
+            _error_file_not_found = [HideJB generateFileNotFoundError];
+            enum_path = [NSMutableDictionary new];
 
             NSLog(@"ready");
         }

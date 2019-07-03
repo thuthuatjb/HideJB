@@ -1,12 +1,9 @@
 Package: com.thuthuatjb.hidejb
 Name: HideJB
-Depends: mobilesubstrate, ws.hbang.common (>= 1.13.1), applist, preferenceloader
-Provides: com.thuthuatjb.ibhelpervn
-Conflicts: com.thuthuatjb.ibhelpervn
-Replaces: com.thuthuatjb.ibhelpervn
-Version: 1.1
+Depends: mobilesubstrate, ws.hbang.common, applist, preferenceloader
+Version: 2.1
 Architecture: iphoneos-arm
-Description: Hide Jailbreak for iOS App
+Description: Hide Jailbreak for iOS App.
 Maintainer: TTJB Team <admin@thuthuatjb.com>
 Author: TTJB Team <admin@thuthuatjb.com>
 Section: Tweaks

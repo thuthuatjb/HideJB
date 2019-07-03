@@ -45,44 +45,6 @@
 			<string>ENABLE_HIDEJB</string>
 		</dict>
 		<dict>
-			<key>PostNotification</key>
-			<string>ThuthuatJBHideJBPreferencesChangedNotification</string>
-			<key>cell</key>
-			<string>PSSwitchCell</string>
-			<key>default</key>
-			<true/>
-			<key>defaults</key>
-			<string>com.thuthuatjb.hidejb</string>
-			<key>key</key>
-			<string>enabled_nosub</string>
-			<key>label</key>
-			<string>ENABLE_FORCETOUCH_NOSUB</string>
-		</dict>
-		<dict>
-			<key>cell</key>
-			<string>PSSwitchCell</string>
-			<key>default</key>
-			<true/>
-			<key>defaults</key>
-			<string>com.thuthuatjb.hidejb</string>
-			<key>key</key>
-			<string>enabled_exclude_safe_apps</string>
-			<key>label</key>
-			<string>EXCLUDE_SAFE_APP</string>
-		</dict>
-		<dict>
-			<key>cell</key>
-			<string>PSSwitchCell</string>
-			<key>default</key>
-			<false/>
-			<key>defaults</key>
-			<string>com.thuthuatjb.hidejb</string>
-			<key>key</key>
-			<string>enabled_lock_sandbox</string>
-			<key>label</key>
-			<string>LOCK_APP_IN_SANDBOX</string>
-		</dict>
-		<dict>
 			<key>cell</key>
 			<string>PSSegmentCell</string>
 			<key>default</key>
@@ -140,13 +102,20 @@
 			<key>label</key>
 			<string>SELECT_APPS</string>
 		</dict>
+
 		<dict>
+			<key>PostNotification</key>
+			<string>ThuthuatJBHideJBPreferencesChangedNotification</string>
 			<key>cell</key>
-			<string>PSGroupCell</string>
-			<key>footerText</key>
-			<string>NOITICE_BYBASS_MODES</string>
+			<string>PSSwitchCell</string>
+			<key>default</key>
+			<true/>
+			<key>defaults</key>
+			<string>com.thuthuatjb.hidejb</string>
+			<key>key</key>
+			<string>enabled_nosub</string>
 			<key>label</key>
-			<string>BYBASS_MODES</string>
+			<string>ENABLE_FORCETOUCH_NOSUB</string>
 		</dict>
 		<dict>
 			<key>cell</key>
@@ -156,21 +125,9 @@
 			<key>defaults</key>
 			<string>com.thuthuatjb.hidejb</string>
 			<key>key</key>
-			<string>enabled_bypass_checks</string>
+			<string>enabled_bypass_plus</string>
 			<key>label</key>
-			<string>ORIGINAL_BYBASS</string>
-		</dict>
-		<dict>
-			<key>cell</key>
-			<string>PSSwitchCell</string>
-			<key>default</key>
-			<false/>
-			<key>defaults</key>
-			<string>com.thuthuatjb.hidejb</string>
-			<key>key</key>
-			<string>enabled_dyld_hooks</string>
-			<key>label</key>
-			<string>SIMPLE_FILTERS</string>
+			<string>BYBASS_PLUS</string>
 		</dict>
 		<dict>
 			<key>cell</key>
@@ -184,6 +141,40 @@
 			<key>label</key>
 			<string>ADVENTURE_FILTERS</string>
 		</dict>
+		<dict>
+			<key>cell</key>
+			<string>PSLinkCell</string>
+			<key>bundle</key>
+			<string>AppList</string>
+			<key>isController</key>
+			<string>1</string>
+			<key>label</key>
+			<string>PP_MODE</string>
+			<key>ALAllowsSelection</key>
+			<string>0</string>
+			<key>ALSettingsKeyPrefix</key>
+			<string></string>
+			<key>ALSettingsDefaultValue</key>
+			<string>0</string>
+			<key>ALSettingsPath</key>
+			<string>/var/mobile/Library/Preferences/com.thuthuatjb.hidejb.plus+.plist</string>
+			<key>ALSingleEnabledMode</key>
+			<false/>
+			<key>ALSectionDescriptors</key>
+			<array>
+				<dict>
+					<key>cell-class-name</key>
+					<string>ALSwitchCell</string>
+					<key>icon-size</key>
+					<string>29</string>
+					<key>suppress-hidden-apps</key>
+					<string>1</string>
+					<key>predicate</key>
+					<string>isSystemApplication = FALSE</string>
+				</dict>
+			</array>
+		</dict>
+
 		<dict>
 			<key>cell</key>
 			<string>PSGroupCell</string>
@@ -215,11 +206,11 @@
 			<key>cell</key>
 			<string>PSSwitchCell</string>
 			<key>default</key>
-			<true/>
+			<false/>
 			<key>defaults</key>
 			<string>com.thuthuatjb.hidejb</string>
 			<key>key</key>
-			<string>auto_file_map_generation_enabled</string>
+			<string>enabled_auto_scan_file_map</string>
 			<key>label</key>
 			<string>AUTO_SCAN_FILE_MAP</string>
 		</dict>
@@ -232,14 +223,6 @@ Icon from iconfinder
 Thank to Nepeta, jjolano, inoahdev for some code</string>
 			<key>isStaticText</key>
 			<true/>
-		</dict>
-		<dict>
-			<key>action</key>
-			<string>respring:</string>
-			<key>cell</key>
-			<string>PSButtonCell</string>
-			<key>label</key>
-			<string>Respring</string>
 		</dict>
 		<dict>
 			<key>action</key>

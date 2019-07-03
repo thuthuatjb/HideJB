@@ -4,7 +4,7 @@ TARGET := iphone:clang:12.1.2:8.0
 include /Users/dabeecao/theos/makefiles/common.mk
 
 BUNDLE_NAME = HideJBPrefs
-$(BUNDLE_NAME)_FILES = Preferences.m ../Classes/HideJB.xm
+$(BUNDLE_NAME)_FILES = Preferences.m ../Classes/HideJB.m
 $(BUNDLE_NAME)_INSTALL_PATH = /Library/PreferenceBundles
 $(BUNDLE_NAME)_FRAMEWORKS = UIKit
 $(BUNDLE_NAME)_EXTRA_FRAMEWORKS = Cephei CepheiPrefs

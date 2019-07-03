@@ -10,6 +10,7 @@
     if(self) {
         link_map = [NSMutableDictionary new];
         path_map = [NSMutableDictionary new];
+        image_set = [NSMutableArray new];
         url_set = [NSMutableArray new];
 
         _useTweakCompatibilityMode = NO;
@@ -156,13 +157,18 @@
 }
 
 - (BOOL)isImageRestricted:(NSString *)name {
-    if(_passthrough) {
+    if(!name || _passthrough) {
         return NO;
     }
 
     // Match some known dylib paths/names.
     if([name hasPrefix:@"/Library/Frameworks"]
     || [name hasPrefix:@"/Library/Caches/cy-"]
+    || [name hasPrefix:@"/Library/MobileSubstrate"]
+    || [name hasPrefix:@"/usr/lib/tweaks"]
+    || [name hasPrefix:@"/usr/lib/TweakInject"]
+    || [name hasPrefix:@"/var/containers/Bundle/tweaksupport"]
+    || [name hasPrefix:@"/var/containers/Bundle/dylibs"]
     || [name containsString:@"Substrate"]
     || [name containsString:@"substrate"]
     || [name containsString:@"substitute"]
@@ -173,8 +179,6 @@
     || [name containsString:@"SBInject"]
     || [name containsString:@"pspawn"]
     || [name containsString:@"rocketbootstrap"]
-    || [name containsString:@"colorpicker"]
-    || [name containsString:@"CS"]
     || [name containsString:@"bfdecrypt"]) {
         return YES;
     }
@@ -182,6 +186,10 @@
     // Find exact match.
     if(![name isAbsolutePath]) {
         name = [NSString stringWithFormat:@"/usr/lib/lib%@.dylib", name];
+    }
+
+    if([image_set containsObject:name]) {
+        return YES;
     }
     
     if([self isPathRestricted:name partial:NO]) {
@@ -204,8 +212,12 @@
 }
 
 - (BOOL)isPathRestricted:(NSString *)path manager:(NSFileManager *)fm partial:(BOOL)partial {
-    if(_passthrough || !path_map) {
+    if(!path || _passthrough || !path_map || [path containsString:@"file:"]) {
         return NO;
+    }
+
+    if(!fm) {
+        fm = [NSFileManager defaultManager];
     }
 
     BOOL ret = NO;
@@ -226,13 +238,13 @@
     || [path hasPrefix:@"/private/etc"]) {
         NSMutableArray *pathComponents = [NSMutableArray arrayWithArray:[path pathComponents]];
         [pathComponents removeObjectAtIndex:1];
-        path = [NSString pathWithComponents:[pathComponents copy]];
+        path = [NSString pathWithComponents:pathComponents];
     }
 
     if([path hasPrefix:@"/var/tmp"]) {
         NSMutableArray *pathComponents = [NSMutableArray arrayWithArray:[path pathComponents]];
         [pathComponents removeObjectAtIndex:1];
-        path = [NSString pathWithComponents:[pathComponents copy]];
+        path = [NSString pathWithComponents:pathComponents];
     }
 
     // Exclude some paths under tweak compatibility mode.
@@ -252,30 +264,31 @@
     // Check path components with path map.
     if(!ret) {
         NSArray *pathComponents = [path pathComponents];
-        NSMutableDictionary *current_path_map = path_map;
+        NSDictionary *current_path_map = [path_map copy];
 
         for(NSString *value in pathComponents) {
-            if(!current_path_map[value]) {
-                if(partial) {
-                    BOOL match = NO;
+            NSDictionary *next = [current_path_map[value] copy];
 
-                    // Attempt partial match
+            if(!next) {
+                if(partial) {
+                    // Attempt partial match.
                     for(NSString *value_match in current_path_map) {
                         if([value hasPrefix:value_match]) {
-                            match = YES;
+                            next = [current_path_map[value_match] copy];
                             break;
                         }
                     }
 
-                    if(!match) {
+                    if(!next) {
                         break;
                     }
                 } else {
+                    // Did not exact match.
                     return NO;
                 }
             }
 
-            current_path_map = current_path_map[value];
+            current_path_map = next;
         }
 
         if(current_path_map[@"restricted"]) {
@@ -307,13 +320,8 @@
 }
 
 - (BOOL)isURLRestricted:(NSURL *)url manager:(NSFileManager *)fm partial:(BOOL)partial {
-    if(_passthrough) {
+    if(!url || _passthrough) {
         return NO;
-    }
-
-    // URL set checks
-    if([url_set containsObject:[url scheme]]) {
-        return YES;
     }
 
     // Package manager URL scheme checks
@@ -325,7 +333,23 @@
 
     // File URL checks
     if([url isFileURL]) {
-        return [self isPathRestricted:[url path] manager:fm partial:partial];
+        NSString *path = [url path];
+
+        // Handle File Reference URLs
+        if([url isFileReferenceURL]) {
+            NSURL *surl = [url standardizedURL];
+
+            if(surl) {
+                path = [surl path];
+            }
+        }
+
+        return [self isPathRestricted:path manager:fm partial:partial];
+    }
+
+    // URL set checks
+    if([url_set containsObject:[url scheme]]) {
+        return YES;
     }
 
     return NO;
@@ -340,22 +364,24 @@
 }
 
 - (void)addPath:(NSString *)path restricted:(BOOL)restricted hidden:(BOOL)hidden prestricted:(BOOL)prestricted phidden:(BOOL)phidden {
-    NSArray *pathComponents = [path pathComponents];
-    NSMutableDictionary *current_path_map = path_map;
+    if(path) {
+        NSArray *pathComponents = [path pathComponents];
+        NSMutableDictionary *current_path_map = path_map;
 
-    for(NSString *value in pathComponents) {
-        if(!current_path_map[value]) {
-            current_path_map[value] = [NSMutableDictionary new];
-            [current_path_map[value] setValue:value forKey:@"name"];
-            [current_path_map[value] setValue:[NSNumber numberWithBool:prestricted] forKey:@"restricted"];
-            [current_path_map[value] setValue:[NSNumber numberWithBool:phidden] forKey:@"hidden"];
+        for(NSString *value in pathComponents) {
+            if(!current_path_map[value]) {
+                current_path_map[value] = [NSMutableDictionary new];
+                [current_path_map[value] setValue:value forKey:@"name"];
+                [current_path_map[value] setValue:[NSNumber numberWithBool:prestricted] forKey:@"restricted"];
+                [current_path_map[value] setValue:[NSNumber numberWithBool:phidden] forKey:@"hidden"];
+            }
+
+            current_path_map = current_path_map[value];
         }
 
-        current_path_map = current_path_map[value];
+        [current_path_map setValue:[NSNumber numberWithBool:restricted] forKey:@"restricted"];
+        [current_path_map setValue:[NSNumber numberWithBool:hidden] forKey:@"hidden"];
     }
-
-    [current_path_map setValue:[NSNumber numberWithBool:restricted] forKey:@"restricted"];
-    [current_path_map setValue:[NSNumber numberWithBool:hidden] forKey:@"hidden"];
 }
 
 - (void)addRestrictedPath:(NSString *)path {
@@ -363,51 +389,74 @@
 }
 
 - (void)addPathsFromFileMap:(NSArray *)file_map {
-    for(NSString *path in file_map) {
-        if([path hasPrefix:@"/System"]) {
-            // Don't restrict paths along the way for /System
-            [self addPath:path restricted:YES];
-        } else {
-            [self addRestrictedPath:path];
+    if(file_map) {
+        for(NSString *path in file_map) {
+            if([path hasPrefix:@"/System"]) {
+                // Don't restrict paths along the way for /System
+                [self addPath:path restricted:YES];
+            } else {
+                if([path hasPrefix:@"/usr/lib"]
+                || [path hasPrefix:@"/Library/MobileSubstrate"]) {
+                    [image_set addObject:path];
+
+                    if(_useTweakCompatibilityMode) {
+                        continue;
+                    }
+                }
+
+                [self addRestrictedPath:path];
+            }
         }
     }
 }
 
 - (void)addSchemesFromURLSet:(NSArray *)set {
-    [url_set addObjectsFromArray:set];
+    if(set) {
+        [url_set addObjectsFromArray:set];
+    }
 }
 
 - (void)addLinkFromPath:(NSString *)from toPath:(NSString *)to {
-    // Exclude some paths under tweak compatibility mode.
-    if(_useTweakCompatibilityMode) {
-        if([from hasPrefix:@"/Library/Application Support"]
-        || [from hasPrefix:@"/Library/Frameworks"]
-        || [from hasPrefix:@"/Library/Themes"]
-        || [from hasPrefix:@"/User/Library/Preferences"]) {
+    if(from && to) {
+        // Exclude some paths under tweak compatibility mode.
+        if(_useTweakCompatibilityMode) {
+            if([from hasPrefix:@"/Library/Application Support"]
+            || [from hasPrefix:@"/Library/Frameworks"]
+            || [from hasPrefix:@"/Library/Themes"]
+            || [from hasPrefix:@"/Library/SnowBoard"]
+            || [from hasPrefix:@"/Library/PreferenceBundles"]
+            || [from hasPrefix:@"/var/mobile/Library/Preferences"]
+            || [from hasPrefix:@"/User/Library/Preferences"]) {
+                return;
+            }
+        }
+
+        // Exception for relative destination paths.
+        if(![to isAbsolutePath]) {
             return;
         }
-    }
 
-    // Exception for relative destination paths.
-    if(![to isAbsolutePath]) {
-        return;
+        NSLog(@"tracking link %@ -> %@", from, to);
+        [link_map setValue:to forKey:from];
     }
-
-    NSLog(@"tracking link %@ -> %@", from, to);
-    [link_map setValue:to forKey:from];
 }
 
 - (NSString *)resolveLinkInPath:(NSString *)path {
-    if(!link_map) {
-        return path;
-    }
+    if(path) {
+        NSDictionary *links = [link_map copy];
 
-    for(NSString *key in link_map) {
-        if([path hasPrefix:key]) {
-            NSString *value = link_map[key];
-            NSString *new_path = [value stringByAppendingPathComponent:[path substringFromIndex:[key length]]];
-            path = new_path;
-            break;
+        for(NSString *key in links) {
+            if([path hasPrefix:key]) {
+                NSString *value = links[key];
+                
+                if([key isEqualToString:@"/"]) {
+                    path = [value stringByAppendingPathComponent:path];
+                } else {
+                    path = [path stringByReplacingOccurrencesOfString:key withString:value];
+                }
+
+                break;
+            }
         }
     }
 

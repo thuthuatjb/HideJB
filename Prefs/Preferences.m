@@ -48,19 +48,48 @@
 }
 
 - (void)respring:(id)sender {
-    NSTask *t = [[[NSTask alloc] init] autorelease];
-    [t setLaunchPath:@"/usr/bin/killall"];
-    [t setArguments:[NSArray arrayWithObjects:@"backboardd", nil]];
-    [t launch];
+    // Use sbreload if available.
+    if([[NSFileManager defaultManager] fileExistsAtPath:@"/usr/bin/sbreload"]) {
+        pid_t pid;
+        const char *args[] = {"sbreload", NULL, NULL, NULL};
+        posix_spawn(&pid, "/usr/bin/sbreload", NULL, NULL, (char *const *)args, NULL);
+    } else {
+        [HBRespringController respring];
+    }
 }
 
 - (void)reset:(id)sender {
     HBPreferences *prefs = [HBPreferences preferencesForIdentifier:PREFS_TWEAK_ID];
- // HBPreferences *prefs_apps = [HBPreferences preferencesForIdentifier:APPS_PATH];
- // HBPreferences *prefs_blacklist = [HBPreferences preferencesForIdentifier:BLACKLIST_PATH];
-
-    [prefs removeAllObjects];
- //   [prefs_apps removeAllObjects];
-  //  [prefs_blacklist removeAllObjects];
+    HBPreferences *prefs_apps = [HBPreferences preferencesForIdentifier:APPS_PATH];
+    HBPreferences *prefs_blacklist = [HBPreferences preferencesForIdentifier:BLACKLIST_PATH];
+    HBPreferences *prefs_tweakcompat = [HBPreferences preferencesForIdentifier:TWEAKCOMPAT_PATH];
+    HBPreferences *prefs_lockdown = [HBPreferences preferencesForIdentifier:LOCKDOWN_PATH];
+    HBPreferences *prefs_dlfcn = [HBPreferences preferencesForIdentifier:DLFCN_PATH];
+    
+    if(prefs) {
+        [prefs removeAllObjects];
+    }
+    
+    if(prefs_apps) {
+        [prefs_apps removeAllObjects];
+    }
+    
+    if(prefs_blacklist) {
+        [prefs_blacklist removeAllObjects];
+    }
+    
+    if(prefs_tweakcompat) {
+        [prefs_tweakcompat removeAllObjects];
+    }
+    
+    if(prefs_lockdown) {
+        [prefs_lockdown removeAllObjects];
+    }
+    
+    if(prefs_dlfcn) {
+        [prefs_dlfcn removeAllObjects];
+    }
+    
+    [self respring:sender];
 }
 @end

@@ -11,14 +11,14 @@
 #define PREFS_TWEAK_ID      @"com.thuthuatjb.hidejb"
 #define BLACKLIST_PATH      @"com.thuthuatjb.hidejb"
 #define APPS_PATH           @"com.thuthuatjb.hidejb"
-#define DLFCN_PATH          @"com.thuthuatjb.hidejb"
-#define TWEAKCOMPAT_PATH    @"com.thuthuatjb.hidejb"
-#define INJECTCOMPAT_PATH   @"com.thuthuatjb.hidejb"
-#define LOCKDOWN_PATH       @"com.thuthuatjb.hidejb"
+#define DLFCN_PATH          @"com.thuthuatjb.hidejb.plus+"
+#define TWEAKCOMPAT_PATH    @"com.thuthuatjb.hidejb.plus+"
+#define LOCKDOWN_PATH       @"com.thuthuatjb.hidejb.plus+"
 
 @interface HideJB : NSObject {
     NSMutableDictionary *link_map;
     NSMutableDictionary *path_map;
+    NSMutableArray *image_set;
     NSMutableArray *url_set;
 }
 

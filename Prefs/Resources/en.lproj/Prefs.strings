@@ -8,8 +8,6 @@
 	<string>All Apps</string>
 	<key>AUTO_SCAN_FILE_MAP</key>
 	<string>Automatically Scan File Maps</string>
-	<key>BYBASS_MODES</key>
-	<string>Modes</string>
 	<key>CANCEL</key>
 	<string>Cancel</string>
 	<key>CONFIRM_SCAN_FILE_MAP</key>
@@ -18,41 +16,36 @@
 	<string>Enable ForceTouch Nosub</string>
 	<key>ENABLE_HIDEJB</key>
 	<string>Enable HideJB</string>
-	<key>EXCLUDE_SAFE_APP</key>
-	<string>Exclude System Apps &amp; JB Tools</string>
 	<key>FILE_MAP</key>
 	<string>File Map</string>
 	<key>FIND_MORE_TWEAK</key>
 	<string>Search for more tweaks on our repo</string>
 	<key>FOLLOW_US_ON_FB</key>
 	<string>Follow us on Facebook</string>
-	<key>LOCK_APP_IN_SANDBOX</key>
-	<string>Lock App In Sandbox</string>
+<key>PP_MODE</key>
+<string>Plus+ Mode (BETA)</string>
 	<key>NOITICE</key>
 	<string>- In all applications mode, all applications will be protected by HideJB except the applications you choose.
 - In only selected mode, only the application you choose will be protected by HideJB.
 - FocreTouch Nosub helps you access applications in safe mode SafeMode (disable in-app tweaks). Click ForceTouch on the icon in the main screen to access this mode.
-- Application Key In Sandbox helps you to restore iOS sandbox mechanism and make applications only work in its own environment by restricting application's read/write permissions.</string>
-	<key>NOITICE_BYBASS_MODES</key>
-	<string>- Turn off the original mode if you want HideJB to try harder.
-- Advanced filter can activate the wrong jailbreak detection of some applications, be cautious when using.</string>
+- Advanced filter can activate the wrong jailbreak detection of some applications, be cautious when using.
+- Plus+ mode will turn off all tweaks in the selected application but still allow HideJB to work in that application.
+- No need to respring when changing settings.</string>
 	<key>NOITICE_SCAN_FILE_MAP</key>
-	<string>- HideJB will scan the file map and know the changes of the system, every time you install or delete tweak, the file map will change and you must perform this operation again.
-- Auto mode will scan the file map every time you Respring.</string>
+<string>- Scan file map to improve HideJB's operability.
+- Turn on auto scan the file map will cause Respring to take more time.</string>
 	<key>NOTICE_RESET</key>
 	<string>This will reset HideJB's default settings, do you want to continue?</string>
 	<key>ONLY_SELECTED</key>
 	<string>Only Selected Apps</string>
-	<key>ORIGINAL_BYBASS</key>
-	<string>Original Mode</string>
+	<key>BYBASS_PLUS</key>
+	<string>Plus Mode</string>
 	<key>RESET</key>
 	<string>Reset HideJB</string>
 	<key>SCAN_FILE_MAP</key>
 	<string>Scan File Map</string>
 	<key>SELECT_APPS</key>
 	<string>Select Apps</string>
-	<key>SIMPLE_FILTERS</key>
-	<string>Simple Filters</string>
 	<key>SUPPORT_US</key>
 	<string>How to help us</string>
 </dict>
